@@ -14,6 +14,9 @@ import com.google.android.material.imageview.ShapeableImageView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.text.DateFormat
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class FolderAdapter(
     private val scope: CoroutineScope,
@@ -24,6 +27,8 @@ class FolderAdapter(
     class Row(val file: DriveFile) {
         var count: Int? = null
         var coverId: String? = null
+        var date: String? = null
+        var location: String? = null
         var loaded = false
     }
 
@@ -68,6 +73,7 @@ class FolderAdapter(
         val card: MaterialCardView = view as MaterialCardView
         val cover: ShapeableImageView = view.findViewById(R.id.cover)
         val name: TextView = view.findViewById(R.id.name)
+        val meta: TextView = view.findViewById(R.id.meta)
         val count: TextView = view.findViewById(R.id.count)
         val check: CheckBox = view.findViewById(R.id.check)
         var job: Job? = null
@@ -85,6 +91,7 @@ class FolderAdapter(
         val context = holder.itemView.context
         holder.name.text = row.file.name ?: context.getString(R.string.untitled)
         holder.cover.setImageResource(R.drawable.ic_photo)
+        holder.meta.visibility = View.GONE
 
         // Selected albums get a colored border around the card (card background is not visible
         // because the cover image fills the whole card).
@@ -134,8 +141,10 @@ class FolderAdapter(
         holder.job = scope.launch {
             try {
                 val stats = DriveRepo.folderStats(context, folderId)
-                row.count = stats.first
-                row.coverId = stats.second
+                row.count = stats.count
+                row.coverId = stats.coverId
+                row.date = stats.date
+                row.location = stats.location
                 row.loaded = true
                 if (isRowShowing(holder, row)) render(holder, row)
             } catch (e: Exception) {
@@ -156,7 +165,28 @@ class FolderAdapter(
             count == 1 -> holder.itemView.context.getString(R.string.photo_count)
             else -> holder.itemView.context.getString(R.string.photos_count, count)
         }
+
+        // Smaller line under the album name: date and location (both optional).
+        val parts = listOfNotNull(
+            row.date?.let { "📅 " + formatDate(it) },
+            row.location?.takeIf { it.isNotBlank() }?.let { "📍 $it" }
+        )
+        if (parts.isEmpty()) {
+            holder.meta.visibility = View.GONE
+        } else {
+            holder.meta.text = parts.joinToString("   ")
+            holder.meta.visibility = View.VISIBLE
+        }
+
         row.coverId?.let { AuthImageLoader.load(holder.cover, it) }
+    }
+
+    /** Stored as yyyy-MM-dd; shown in the phone's own date style. Falls back to the raw text. */
+    private fun formatDate(raw: String): String = try {
+        val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(raw)
+        if (parsed != null) DateFormat.getDateInstance(DateFormat.MEDIUM).format(parsed) else raw
+    } catch (e: Exception) {
+        raw
     }
 
     override fun onViewRecycled(holder: VH) {

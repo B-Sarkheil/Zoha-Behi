@@ -22,5 +22,8 @@
     <string name="untitled">Untitled</string>
     <string name="new_album">New album</string>
     <string name="album_name">Album name</string>
+    <string name="album_date">Date</string>
+    <string name="album_location">Location (optional)</string>
+    <string name="album_name_required">Please enter a name</string>
     <string name="create">Create</string>
 </resources>

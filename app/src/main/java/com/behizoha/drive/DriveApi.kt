@@ -6,6 +6,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.HeaderMap
 import retrofit2.http.POST
 import retrofit2.http.Url
 
@@ -17,6 +18,14 @@ data class DriveFile(
     val name: String? = null,
     val mimeType: String? = null,
     val createdTime: String? = null
+)
+
+/** Album summary: photo count, cover photo id and optional date/location metadata. */
+data class FolderStats(
+    val count: Int,
+    val coverId: String?,
+    val date: String?,
+    val location: String?
 )
 
 data class AllowedInfo(
@@ -44,7 +53,8 @@ data class B2File(
     val fileName: String? = null,
     val action: String? = null,
     val contentType: String? = null,
-    val uploadTimestamp: Long? = null
+    val uploadTimestamp: Long? = null,
+    val fileInfo: Map<String, String>? = null
 )
 
 data class ListResponse(
@@ -93,6 +103,7 @@ interface DriveApi {
         @Header("Authorization") uploadToken: String,
         @Header("X-Bz-File-Name") fileName: String,
         @Header("X-Bz-Content-Sha1") sha1: String,
+        @HeaderMap extraHeaders: Map<String, String>,
         @Body body: RequestBody
     ): B2File
 
