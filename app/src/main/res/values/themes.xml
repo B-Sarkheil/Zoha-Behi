@@ -8,6 +8,13 @@
         <item name="colorSecondaryVariant">@color/accent</item>
         <item name="colorOnSecondary">@android:color/black</item>
         <item name="android:statusBarColor">@color/primary_dark</item>
+        <item name="alertDialogTheme">@style/ThemeOverlay.Behi.AlertDialog</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Behi.AlertDialog</item>
+    </style>
+
+    <!-- Makes dialog buttons readable in both light and dark mode. -->
+    <style name="ThemeOverlay.Behi.AlertDialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
+        <item name="colorPrimary">@color/dialog_button</item>
     </style>
 
     <style name="ShapeAppearance.Behi.Corner.Medium" parent="">

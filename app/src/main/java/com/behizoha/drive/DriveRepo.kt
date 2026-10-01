@@ -7,6 +7,7 @@ import android.provider.OpenableColumns
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
+import java.net.URLDecoder
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -17,10 +18,13 @@ import java.util.TimeZone
  * Backblaze B2 backed repository.
  * Albums are "folders": B2 has no real folders, so an album is a name prefix such as "Trip/".
  * An empty album is kept alive by a small placeholder file named ".bzEmpty".
+ * The album date and location are stored as file info on that placeholder.
  */
 object DriveRepo {
 
     private const val PLACEHOLDER = ".bzEmpty"
+    private const val INFO_DATE = "album-date"
+    private const val INFO_LOCATION = "album-location"
     private val STAMP = Regex("^\\d{13}_")
 
     private val api: DriveApi get() = B2Http.api
@@ -37,12 +41,19 @@ object DriveRepo {
             .sortedBy { it.name?.lowercase() }
     }
 
-    /** Returns (photo count, id of the oldest photo used as cover). */
-    suspend fun folderStats(context: Context, folderId: String): Pair<Int, String?> =
+    /** Photo count, oldest photo as cover, and the album date/location from the placeholder. */
+    suspend fun folderStats(context: Context, folderId: String): FolderStats =
         authed { s ->
-            val photos = listAll(s, folderId).filter(::isImage)
+            val files = listAll(s, folderId)
+            val photos = files.filter(::isImage)
             val cover = photos.minByOrNull { it.uploadTimestamp ?: Long.MAX_VALUE }
-            photos.size to cover?.fileId
+            val info = files.firstOrNull { it.fileName == folderId + PLACEHOLDER }?.fileInfo
+            FolderStats(
+                count = photos.size,
+                coverId = cover?.fileId,
+                date = infoValue(info, INFO_DATE),
+                location = infoValue(info, INFO_LOCATION)
+            )
         }
 
     suspend fun images(context: Context, folderId: String): List<DriveFile> =
@@ -72,10 +83,18 @@ object DriveRepo {
         return DriveFile(id = stored.fileId, name = name, mimeType = mime)
     }
 
-    suspend fun createFolder(context: Context, name: String) {
+    suspend fun createFolder(
+        context: Context,
+        name: String,
+        date: String? = null,
+        location: String? = null
+    ) {
         val clean = name.trim().replace("/", "-")
         if (clean.isEmpty()) return
-        putFile("$clean/$PLACEHOLDER", "application/octet-stream", ByteArray(0))
+        val extra = mutableMapOf<String, String>()
+        if (!date.isNullOrBlank()) extra["X-Bz-Info-$INFO_DATE"] = encodeValue(date.trim())
+        if (!location.isNullOrBlank()) extra["X-Bz-Info-$INFO_LOCATION"] = encodeValue(location.trim())
+        putFile("$clean/$PLACEHOLDER", "application/octet-stream", ByteArray(0), extra)
     }
 
     /**
@@ -123,7 +142,12 @@ object DriveRepo {
         }
     }
 
-    private suspend fun putFile(fileName: String, mime: String, bytes: ByteArray): B2File =
+    private suspend fun putFile(
+        fileName: String,
+        mime: String,
+        bytes: ByteArray,
+        extraHeaders: Map<String, String> = emptyMap()
+    ): B2File =
         authed { s ->
             val target = api.getUploadUrl(
                 s.apiUrl + "/b2api/v2/b2_get_upload_url", s.token, UploadUrlRequest(s.bucketId)
@@ -133,6 +157,7 @@ object DriveRepo {
                 target.authorizationToken ?: throw IllegalStateException("No upload token"),
                 encodeName(fileName),
                 "do_not_verify",
+                extraHeaders,
                 bytes.toRequestBody(mime.toMediaTypeOrNull())
             )
         }
@@ -167,6 +192,22 @@ object DriveRepo {
 
     private fun encodeName(name: String): String =
         URLEncoder.encode(name, "UTF-8").replace("+", "%20").replace("%2F", "/")
+
+    /** Header values must be percent-encoded (supports non-Latin text). */
+    private fun encodeValue(value: String): String =
+        URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
+    /** Reads a file-info value (case-insensitive key) and decodes it defensively. */
+    private fun infoValue(info: Map<String, String>?, key: String): String? {
+        val raw = info?.entries?.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value
+            ?: return null
+        val decoded = try {
+            URLDecoder.decode(raw.replace("+", "%2B"), "UTF-8")
+        } catch (e: Exception) {
+            raw
+        }
+        return decoded.takeIf { it.isNotBlank() }
+    }
 
     private fun iso(ts: Long?): String? {
         if (ts == null) return null

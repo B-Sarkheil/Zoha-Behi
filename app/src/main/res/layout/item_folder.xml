@@ -40,18 +40,37 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:maxLines="1"
+                android:shadowColor="#99000000"
+                android:shadowDx="0"
+                android:shadowDy="1"
+                android:shadowRadius="6"
                 android:textColor="@android:color/white"
-                android:textSize="18sp"
+                android:textSize="24sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/meta"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:shadowColor="#99000000"
+                android:shadowDx="0"
+                android:shadowDy="1"
+                android:shadowRadius="4"
+                android:textColor="#F2FFFFFF"
+                android:textSize="13sp"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="2dp"
                 android:text="@string/loading"
-                android:textColor="@android:color/white"
-                android:textSize="13sp" />
+                android:textColor="#CCFFFFFF"
+                android:textSize="12sp" />
         </LinearLayout>
 
         <CheckBox
