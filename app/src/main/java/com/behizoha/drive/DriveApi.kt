@@ -20,6 +20,20 @@ data class DriveFile(
     val createdTime: String? = null
 )
 
+/** Comment on an image. */
+data class Comment(
+    val text: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val author: String = "You"
+) {
+    fun displayTime(): String {
+        val fmt = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault())
+        return fmt.format(java.util.Date(timestamp))
+    }
+}
+
+data class CommentsFile(val comments: List<Comment> = emptyList())
+
 /** Album summary: photo count, cover photo id and optional date/location metadata. */
 data class FolderStats(
     val count: Int,
