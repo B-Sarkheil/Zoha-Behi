@@ -10,6 +10,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -28,11 +29,12 @@ class FolderActivity : AppCompatActivity() {
     private lateinit var adapter: FolderAdapter
     private lateinit var swipe: SwipeRefreshLayout
     private lateinit var empty: TextView
+    private lateinit var touchHelper: ItemTouchHelper
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_folder)
-        title = getString(R.string.app_name) + " Ver." + versionName()
+        title = appTitle()
 
         swipe = findViewById(R.id.swipe)
         empty = findViewById(R.id.empty)
@@ -55,9 +57,29 @@ class FolderActivity : AppCompatActivity() {
                 supportActionBar?.subtitle =
                     if (count > 0) getString(R.string.selected_count, count) else null
                 invalidateOptionsMenu()
-            }
+            },
+            onStartDrag = { holder -> touchHelper.startDrag(holder) }
         )
         recycler.adapter = adapter
+
+        // Drag & drop: long-press drag only works while reorder mode is on.
+        touchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0
+        ) {
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                adapter.moveItem(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
+                return true
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+
+            override fun isLongPressDragEnabled(): Boolean = adapter.reorderMode
+        })
+        touchHelper.attachToRecyclerView(recycler)
 
         swipe.setOnRefreshListener { lifecycleScope.launch { load() } }
 
@@ -70,6 +92,8 @@ class FolderActivity : AppCompatActivity() {
     } catch (e: Exception) {
         "?"
     }
+
+    private fun appTitle(): String = getString(R.string.app_name) + " - ver." + versionName()
 
     private suspend fun load() {
         swipe.isRefreshing = true
@@ -86,6 +110,52 @@ class FolderActivity : AppCompatActivity() {
         } finally {
             swipe.isRefreshing = false
         }
+    }
+
+    // ---- Reorder mode ----
+
+    private fun startReorder() {
+        adapter.startReorder()
+        swipe.isEnabled = false
+        title = getString(R.string.reorder_title)
+        supportActionBar?.subtitle = null
+        invalidateOptionsMenu()
+        Ui.toast(this, getString(R.string.reorder_hint))
+    }
+
+    private fun leaveReorderUi() {
+        swipe.isEnabled = true
+        title = appTitle()
+        invalidateOptionsMenu()
+    }
+
+    private fun cancelReorder() {
+        adapter.cancelReorder()
+        leaveReorderUi()
+    }
+
+    private fun saveOrder() {
+        val ids = adapter.currentIds()
+        val progress = Ui.progress(this, getString(R.string.loading))
+        lifecycleScope.launch {
+            try {
+                DriveRepo.saveFolderOrder(this@FolderActivity, ids)
+                adapter.finishReorder()
+                leaveReorderUi()
+                Ui.toast(this@FolderActivity, getString(R.string.order_saved))
+            } catch (e: Exception) {
+                Ui.toast(
+                    this@FolderActivity,
+                    getString(R.string.error_generic, e.message ?: e.javaClass.simpleName)
+                )
+            } finally {
+                progress.dismiss()
+            }
+        }
+    }
+
+    override fun onBackPressed() {
+        if (adapter.reorderMode) cancelReorder() else super.onBackPressed()
     }
 
     private fun deleteSelected() {
@@ -118,8 +188,14 @@ class FolderActivity : AppCompatActivity() {
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val reordering = adapter.reorderMode
         menu.findItem(R.id.action_delete)?.isVisible =
-            adapter.selectionMode && adapter.selectedIds.isNotEmpty()
+            !reordering && adapter.selectionMode && adapter.selectedIds.isNotEmpty()
+        menu.findItem(R.id.action_new_album)?.isVisible = !reordering
+        menu.findItem(R.id.action_refresh)?.isVisible = !reordering
+        menu.findItem(R.id.action_reorder)?.isVisible = !reordering && adapter.itemCount > 1
+        menu.findItem(R.id.action_save_order)?.isVisible = reordering
+        menu.findItem(R.id.action_cancel_order)?.isVisible = reordering
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -135,6 +211,18 @@ class FolderActivity : AppCompatActivity() {
             }
             R.id.action_new_album -> {
                 promptNewAlbum()
+                true
+            }
+            R.id.action_reorder -> {
+                startReorder()
+                true
+            }
+            R.id.action_save_order -> {
+                saveOrder()
+                true
+            }
+            R.id.action_cancel_order -> {
+                cancelReorder()
                 true
             }
             else -> super.onOptionsItemSelected(item)

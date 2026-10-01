@@ -4,7 +4,12 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
 import java.net.URLDecoder
@@ -19,38 +24,119 @@ import java.util.TimeZone
  * Albums are "folders": B2 has no real folders, so an album is a name prefix such as "Trip/".
  * An empty album is kept alive by a small placeholder file named ".bzEmpty".
  * The album date and location are stored as file info on that placeholder.
+ * Display order is stored in small JSON files named ".order":
+ *  - bucket root ".order": list of album prefixes
+ *  - "Album/.order": list of photo fileIds in that album
  */
 object DriveRepo {
 
     private const val PLACEHOLDER = ".bzEmpty"
+    private const val ORDER_FILE = ".order"
     private const val INFO_DATE = "album-date"
     private const val INFO_LOCATION = "album-location"
     private val STAMP = Regex("^\\d{13}_")
 
     private val api: DriveApi get() = B2Http.api
+    private val http = OkHttpClient()
 
     fun mediaUrl(fileId: String): String {
         val base = TokenManager.downloadUrl() ?: ""
         return "$base/b2api/v2/b2_download_file_by_id?fileId=$fileId"
     }
 
+    /** Albums in the saved order; albums missing from the order file go last, sorted by name. */
     suspend fun folders(context: Context): List<DriveFile> = authed { s ->
-        listAll(s, "")
+        val all = listAll(s, "")
+        val folders = all
             .filter { it.action == "folder" && it.fileName != null }
             .map { DriveFile(id = it.fileName, name = it.fileName!!.trimEnd('/')) }
-            .sortedBy { it.name?.lowercase() }
+        applyOrder(folders, orderFor(s, all, ORDER_FILE))
     }
 
-    /** Photo count, oldest photo as cover, and the album date/location from the placeholder. */
+    /** Saves the album order (list of album prefixes) so both phones see the same order. */
+    suspend fun saveFolderOrder(context: Context, ids: List<String>) {
+        writeOrder(ORDER_FILE, ids)
+    }
+
+    /** Saves the photo order (list of fileIds) for one album. */
+    suspend fun saveImageOrder(context: Context, folderId: String, ids: List<String>) {
+        writeOrder(folderId + ORDER_FILE, ids)
+    }
+
+    private suspend fun writeOrder(orderName: String, ids: List<String>) {
+        val bytes = Gson().toJson(ids).toByteArray(Charsets.UTF_8)
+        val previousId = authed { s ->
+            listAll(s, orderName, limit = 10, delimiter = null)
+                .firstOrNull { it.fileName == orderName }?.fileId
+        }
+        putFile(orderName, "application/json", bytes)
+        // Remove the old version so versions do not pile up (best effort).
+        if (previousId != null) {
+            try {
+                authed { s ->
+                    api.deleteFileVersion(
+                        s.apiUrl + "/b2api/v2/b2_delete_file_version", s.token,
+                        DeleteRequest(orderName, previousId)
+                    )
+                }
+            } catch (ignored: Exception) {
+            }
+        }
+    }
+
+    /** Finds the order file in an already loaded listing and reads it (empty if missing). */
+    private suspend fun orderFor(s: B2Session, files: List<B2File>, orderName: String): List<String> {
+        val id = files.firstOrNull { it.action == "upload" && it.fileName == orderName }?.fileId
+            ?: return emptyList()
+        return readOrder(s, id)
+    }
+
+    private suspend fun readOrder(s: B2Session, fileId: String): List<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                val url = s.downloadUrl + "/b2api/v2/b2_download_file_by_id?fileId=" + fileId
+                val request = Request.Builder().url(url).header("Authorization", s.token).build()
+                http.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        emptyList<String>()
+                    } else {
+                        val text = response.body?.string().orEmpty()
+                        Gson().fromJson(text, Array<String>::class.java)?.toList().orEmpty()
+                    }
+                }
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+
+    private fun applyOrder(items: List<DriveFile>, order: List<String>): List<DriveFile> {
+        val index = HashMap<String, Int>()
+        order.forEachIndexed { i, id -> index[id] = i }
+        return items.sortedWith(
+            compareBy<DriveFile> { index[it.id] ?: Int.MAX_VALUE }
+                .thenBy { it.name?.lowercase() }
+        )
+    }
+
+    /** Photos in saved order; photos missing from the order file go last, oldest first. */
+    private fun sortPhotos(photos: List<B2File>, order: List<String>): List<B2File> {
+        val index = HashMap<String, Int>()
+        order.forEachIndexed { i, id -> index[id] = i }
+        return photos.sortedWith(
+            compareBy<B2File> { index[it.fileId] ?: Int.MAX_VALUE }
+                .thenBy { it.uploadTimestamp ?: 0L }
+        )
+    }
+
+    /** Photo count, cover (first photo in order) and the album date/location from the placeholder. */
     suspend fun folderStats(context: Context, folderId: String): FolderStats =
         authed { s ->
             val files = listAll(s, folderId)
-            val photos = files.filter(::isImage)
-            val cover = photos.minByOrNull { it.uploadTimestamp ?: Long.MAX_VALUE }
+            val photos = sortPhotos(files.filter(::isImage), orderFor(s, files, folderId + ORDER_FILE))
             val info = files.firstOrNull { it.fileName == folderId + PLACEHOLDER }?.fileInfo
             FolderStats(
                 count = photos.size,
-                coverId = cover?.fileId,
+                coverId = photos.firstOrNull()?.fileId,
                 date = infoValue(info, INFO_DATE),
                 location = infoValue(info, INFO_LOCATION)
             )
@@ -58,9 +144,8 @@ object DriveRepo {
 
     suspend fun images(context: Context, folderId: String): List<DriveFile> =
         authed { s ->
-            listAll(s, folderId)
-                .filter(::isImage)
-                .sortedBy { it.uploadTimestamp ?: 0L }
+            val files = listAll(s, folderId)
+            sortPhotos(files.filter(::isImage), orderFor(s, files, folderId + ORDER_FILE))
                 .map {
                     DriveFile(
                         id = it.fileId,
@@ -129,7 +214,7 @@ object DriveRepo {
 
     private suspend fun deleteFolder(prefix: String) {
         authed { s ->
-            // No delimiter: list every file under the prefix, including the placeholder.
+            // No delimiter: list every file under the prefix, including placeholder and order file.
             val all = listAll(s, prefix, limit = 100_000, delimiter = null)
             for (f in all) {
                 val name = f.fileName ?: continue

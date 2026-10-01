@@ -2,9 +2,11 @@ package com.behi.zoha
 
 import android.graphics.Color
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
@@ -13,12 +15,18 @@ import com.google.android.material.imageview.ShapeableImageView
 
 class ImageAdapter(
     private val onOpen: (DriveFile) -> Unit,
-    private val onSelectionChanged: (Int) -> Unit
+    private val onSelectionChanged: (Int) -> Unit,
+    private val onStartDrag: (RecyclerView.ViewHolder) -> Unit
 ) : RecyclerView.Adapter<ImageAdapter.VH>() {
 
     val items = mutableListOf<DriveFile>()
     private val selected = linkedSetOf<String>()
+    private var backup: List<DriveFile>? = null
+
     var selectionMode = false
+        private set
+
+    var reorderMode = false
         private set
 
     val selectedIds: List<String>
@@ -42,6 +50,40 @@ class ImageAdapter(
         onSelectionChanged(0)
     }
 
+    // ---- Reorder mode ----
+
+    fun startReorder() {
+        clearSelection()
+        backup = items.toList()
+        reorderMode = true
+        notifyDataSetChanged()
+    }
+
+    /** Restores the order that existed when reorder mode started. */
+    fun cancelReorder() {
+        backup?.let {
+            items.clear()
+            items.addAll(it)
+        }
+        backup = null
+        reorderMode = false
+        notifyDataSetChanged()
+    }
+
+    fun finishReorder() {
+        backup = null
+        reorderMode = false
+        notifyDataSetChanged()
+    }
+
+    fun currentIds(): List<String> = items.mapNotNull { it.id }
+
+    fun moveItem(from: Int, to: Int) {
+        if (from !in items.indices || to !in items.indices) return
+        items.add(to, items.removeAt(from))
+        notifyItemMoved(from, to)
+    }
+
     private fun toggle(position: Int) {
         val id = items.getOrNull(position)?.id ?: return
         if (!selected.remove(id)) selected.add(id)
@@ -58,6 +100,7 @@ class ImageAdapter(
         val name: TextView = view.findViewById(R.id.name)
         val date: TextView = view.findViewById(R.id.date)
         val check: CheckBox = view.findViewById(R.id.check)
+        val handle: ImageView = view.findViewById(R.id.handle)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -82,30 +125,45 @@ class ImageAdapter(
         holder.check.visibility = if (selectionMode) View.VISIBLE else View.GONE
         holder.check.isChecked = isSelected
 
-        holder.itemView.setOnClickListener {
-            val pos = holder.bindingAdapterPosition
-            if (pos == RecyclerView.NO_POSITION || pos >= items.size) return@setOnClickListener
-            if (selectionMode) {
-                toggle(pos)
-            } else {
-                onOpen(items[pos])
+        // Drag handle: touching it starts a drag right away (only in reorder mode).
+        holder.handle.visibility = if (reorderMode) View.VISIBLE else View.GONE
+        holder.handle.setOnTouchListener { _, event ->
+            if (reorderMode && event.actionMasked == MotionEvent.ACTION_DOWN) {
+                onStartDrag(holder)
             }
+            false
         }
-        holder.itemView.setOnLongClickListener {
-            val pos = holder.bindingAdapterPosition
-            if (pos == RecyclerView.NO_POSITION || pos >= items.size) {
-                return@setOnLongClickListener false
+
+        if (reorderMode) {
+            // No open/select while reordering; long-press drag is handled by ItemTouchHelper.
+            holder.itemView.setOnClickListener(null)
+            holder.itemView.setOnLongClickListener(null)
+        } else {
+            holder.itemView.setOnClickListener {
+                val pos = holder.bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION || pos >= items.size) return@setOnClickListener
+                if (selectionMode) {
+                    toggle(pos)
+                } else {
+                    onOpen(items[pos])
+                }
             }
-            if (!selectionMode) {
-                selectionMode = true
-                val id = items[pos].id
-                if (id != null) selected.add(id)
-                notifyDataSetChanged()
-                onSelectionChanged(selected.size)
-            } else {
-                toggle(pos)
+            holder.itemView.setOnLongClickListener {
+                val pos = holder.bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION || pos >= items.size) {
+                    return@setOnLongClickListener false
+                }
+                if (!selectionMode) {
+                    selectionMode = true
+                    val id = items[pos].id
+                    if (id != null) selected.add(id)
+                    notifyDataSetChanged()
+                    onSelectionChanged(selected.size)
+                } else {
+                    toggle(pos)
+                }
+                true
             }
-            true
         }
     }
 }
