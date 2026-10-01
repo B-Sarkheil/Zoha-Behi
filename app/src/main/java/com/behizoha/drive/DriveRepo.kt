@@ -78,25 +78,49 @@ object DriveRepo {
         putFile("$clean/$PLACEHOLDER", "application/octet-stream", ByteArray(0))
     }
 
+    /**
+     * Deletes the given items and returns how many were removed.
+     * An id ending with "/" is an album prefix (all files under it are deleted),
+     * any other id is a single B2 fileId.
+     */
     suspend fun delete(context: Context, ids: List<String>): Int {
         var count = 0
         for (id in ids) {
             try {
-                authed { s ->
-                    val info = api.getFileInfo(
-                        s.apiUrl + "/b2api/v2/b2_get_file_info", s.token, FileInfoRequest(id)
-                    )
-                    val fileName = info.fileName ?: throw IllegalStateException("No file name")
-                    api.deleteFileVersion(
-                        s.apiUrl + "/b2api/v2/b2_delete_file_version", s.token,
-                        DeleteRequest(fileName, id)
-                    )
-                }
+                if (id.endsWith("/")) deleteFolder(id) else deleteFile(id)
                 count++
             } catch (ignored: Exception) {
             }
         }
         return count
+    }
+
+    private suspend fun deleteFile(fileId: String) {
+        authed { s ->
+            val info = api.getFileInfo(
+                s.apiUrl + "/b2api/v2/b2_get_file_info", s.token, FileInfoRequest(fileId)
+            )
+            val fileName = info.fileName ?: throw IllegalStateException("No file name")
+            api.deleteFileVersion(
+                s.apiUrl + "/b2api/v2/b2_delete_file_version", s.token,
+                DeleteRequest(fileName, fileId)
+            )
+        }
+    }
+
+    private suspend fun deleteFolder(prefix: String) {
+        authed { s ->
+            // No delimiter: list every file under the prefix, including the placeholder.
+            val all = listAll(s, prefix, limit = 100_000, delimiter = null)
+            for (f in all) {
+                val name = f.fileName ?: continue
+                val id = f.fileId ?: continue
+                api.deleteFileVersion(
+                    s.apiUrl + "/b2api/v2/b2_delete_file_version", s.token,
+                    DeleteRequest(name, id)
+                )
+            }
+        }
     }
 
     private suspend fun putFile(fileName: String, mime: String, bytes: ByteArray): B2File =
@@ -113,14 +137,24 @@ object DriveRepo {
             )
         }
 
-    private suspend fun listAll(s: B2Session, prefix: String, limit: Int = 5000): List<B2File> {
+    private suspend fun listAll(
+        s: B2Session,
+        prefix: String,
+        limit: Int = 5000,
+        delimiter: String? = "/"
+    ): List<B2File> {
         val out = mutableListOf<B2File>()
         var start: String? = null
         while (out.size < limit) {
             val page = api.listFileNames(
                 s.apiUrl + "/b2api/v2/b2_list_file_names",
                 s.token,
-                ListRequest(bucketId = s.bucketId, prefix = prefix, startFileName = start)
+                ListRequest(
+                    bucketId = s.bucketId,
+                    prefix = prefix,
+                    delimiter = delimiter,
+                    startFileName = start
+                )
             )
             out.addAll(page.files.orEmpty())
             start = page.nextFileName ?: break
