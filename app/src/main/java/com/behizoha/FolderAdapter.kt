@@ -1,14 +1,15 @@
 package com.behi.zoha
 
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.behi.zoha.drive.DriveFile
 import com.behi.zoha.drive.DriveRepo
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.imageview.ShapeableImageView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -64,6 +65,7 @@ class FolderAdapter(
     }
 
     inner class VH(view: View) : RecyclerView.ViewHolder(view) {
+        val card: MaterialCardView = view as MaterialCardView
         val cover: ShapeableImageView = view.findViewById(R.id.cover)
         val name: TextView = view.findViewById(R.id.name)
         val count: TextView = view.findViewById(R.id.count)
@@ -84,10 +86,12 @@ class FolderAdapter(
         holder.name.text = row.file.name ?: context.getString(R.string.untitled)
         holder.cover.setImageResource(R.drawable.ic_photo)
 
+        // Selected albums get a colored border around the card (card background is not visible
+        // because the cover image fills the whole card).
         val isSelected = selected.contains(row.file.id)
-        holder.itemView.setBackgroundColor(
-            if (isSelected) context.getColor(R.color.selected_bg) else Color.TRANSPARENT
-        )
+        holder.card.strokeColor = ContextCompat.getColor(context, R.color.primary)
+        holder.card.strokeWidth =
+            if (isSelected) (4 * context.resources.displayMetrics.density).toInt() else 0
         holder.check.visibility = if (selectionMode) View.VISIBLE else View.GONE
         holder.check.isChecked = isSelected
 
