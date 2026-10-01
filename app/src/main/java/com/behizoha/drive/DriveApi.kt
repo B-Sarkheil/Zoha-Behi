@@ -78,6 +78,14 @@ data class DeleteResponse(
     val fileName: String? = null
 )
 
+// b2_copy_file copies the source metadata by default (metadataDirective COPY),
+// so contentType/fileInfo must NOT be sent — B2 rejects them with HTTP 400.
+data class CopyRequest(
+    val sourceFileId: String,
+    val fileName: String,
+    val destinationBucketId: String? = null
+)
+
 interface DriveApi {
 
     @GET("b2api/v2/b2_authorize_account")
@@ -120,6 +128,13 @@ interface DriveApi {
         @Header("Authorization") token: String,
         @Body body: DeleteRequest
     ): DeleteResponse
+
+    @POST
+    suspend fun copyFile(
+        @Url url: String,
+        @Header("Authorization") token: String,
+        @Body body: CopyRequest
+    ): B2File
 }
 
 internal object B2Http {
