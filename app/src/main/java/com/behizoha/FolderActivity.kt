@@ -1,6 +1,5 @@
 package com.behi.zoha
 
-import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
@@ -20,9 +19,7 @@ import com.behi.zoha.drive.TokenManager
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Locale
 
 class FolderActivity : AppCompatActivity() {
 
@@ -246,17 +243,15 @@ class FolderActivity : AppCompatActivity() {
         var selectedJalali = Triple(jy, jm, jd)
         inputDate.setText("%04d/%02d/%02d".format(jy, jm, jd))
         inputDate.setOnClickListener {
-            val (cy, cm, cd) = JalaliDate.toGregorian(selectedJalali.first, selectedJalali.second, selectedJalali.third)
-            DatePickerDialog(
+            JalaliDatePickerDialog(
                 this,
-                { _, year, month, day ->
-                    selectedJalali = JalaliDate.fromGregorian(year, month + 1, day)
-                    inputDate.setText("%04d/%02d/%02d".format(selectedJalali.first, selectedJalali.second, selectedJalali.third))
-                },
-                cy,
-                cm - 1,
-                cd
-            ).show()
+                selectedJalali.first,
+                selectedJalali.second,
+                selectedJalali.third
+            ) { year, month, day ->
+                selectedJalali = Triple(year, month, day)
+                inputDate.setText("%04d/%02d/%02d".format(year, month, day))
+            }.show()
         }
 
         val dialog = AlertDialog.Builder(this).setView(view).create()

@@ -32,4 +32,6 @@
     <string name="reorder_hint">Long-press an album and drag it</string>
     <string name="order_saved">Order saved</string>
     <string name="reorder_hint_photos">Drag pictures to reorder. The first picture is the album cover</string>
+    <string name="select_date">Select date</string>
+    <string name="ok">OK</string>
 </resources>
