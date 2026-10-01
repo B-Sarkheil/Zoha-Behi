@@ -1,9 +1,11 @@
 package com.behi.zoha
 
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
@@ -21,7 +23,8 @@ import java.util.Locale
 class FolderAdapter(
     private val scope: CoroutineScope,
     private val onClick: (DriveFile) -> Unit,
-    private val onSelectionChanged: (Int) -> Unit
+    private val onSelectionChanged: (Int) -> Unit,
+    private val onStartDrag: (RecyclerView.ViewHolder) -> Unit
 ) : RecyclerView.Adapter<FolderAdapter.VH>() {
 
     class Row(val file: DriveFile) {
@@ -34,7 +37,12 @@ class FolderAdapter(
 
     private val rows = mutableListOf<Row>()
     private val selected = linkedSetOf<String>()
+    private var backup: List<Row>? = null
+
     var selectionMode = false
+        private set
+
+    var reorderMode = false
         private set
 
     val selectedIds: List<String>
@@ -58,6 +66,40 @@ class FolderAdapter(
         onSelectionChanged(0)
     }
 
+    // ---- Reorder mode ----
+
+    fun startReorder() {
+        clearSelection()
+        backup = rows.toList()
+        reorderMode = true
+        notifyDataSetChanged()
+    }
+
+    /** Restores the order that existed when reorder mode started. */
+    fun cancelReorder() {
+        backup?.let {
+            rows.clear()
+            rows.addAll(it)
+        }
+        backup = null
+        reorderMode = false
+        notifyDataSetChanged()
+    }
+
+    fun finishReorder() {
+        backup = null
+        reorderMode = false
+        notifyDataSetChanged()
+    }
+
+    fun currentIds(): List<String> = rows.mapNotNull { it.file.id }
+
+    fun moveItem(from: Int, to: Int) {
+        if (from !in rows.indices || to !in rows.indices) return
+        rows.add(to, rows.removeAt(from))
+        notifyItemMoved(from, to)
+    }
+
     private fun toggle(position: Int) {
         val id = rows.getOrNull(position)?.file?.id ?: return
         if (!selected.remove(id)) selected.add(id)
@@ -76,6 +118,7 @@ class FolderAdapter(
         val meta: TextView = view.findViewById(R.id.meta)
         val count: TextView = view.findViewById(R.id.count)
         val check: CheckBox = view.findViewById(R.id.check)
+        val handle: ImageView = view.findViewById(R.id.handle)
         var job: Job? = null
     }
 
@@ -102,30 +145,45 @@ class FolderAdapter(
         holder.check.visibility = if (selectionMode) View.VISIBLE else View.GONE
         holder.check.isChecked = isSelected
 
-        holder.itemView.setOnClickListener {
-            val pos = holder.bindingAdapterPosition
-            if (pos == RecyclerView.NO_POSITION || pos >= rows.size) return@setOnClickListener
-            if (selectionMode) {
-                toggle(pos)
-            } else {
-                onClick(rows[pos].file)
+        // Drag handle: touching it starts a drag right away (only in reorder mode).
+        holder.handle.visibility = if (reorderMode) View.VISIBLE else View.GONE
+        holder.handle.setOnTouchListener { _, event ->
+            if (reorderMode && event.actionMasked == MotionEvent.ACTION_DOWN) {
+                onStartDrag(holder)
             }
+            false
         }
-        holder.itemView.setOnLongClickListener {
-            val pos = holder.bindingAdapterPosition
-            if (pos == RecyclerView.NO_POSITION || pos >= rows.size) {
-                return@setOnLongClickListener false
+
+        if (reorderMode) {
+            // No open/select while reordering; long-press drag is handled by ItemTouchHelper.
+            holder.itemView.setOnClickListener(null)
+            holder.itemView.setOnLongClickListener(null)
+        } else {
+            holder.itemView.setOnClickListener {
+                val pos = holder.bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION || pos >= rows.size) return@setOnClickListener
+                if (selectionMode) {
+                    toggle(pos)
+                } else {
+                    onClick(rows[pos].file)
+                }
             }
-            if (!selectionMode) {
-                selectionMode = true
-                val id = rows[pos].file.id
-                if (id != null) selected.add(id)
-                notifyDataSetChanged()
-                onSelectionChanged(selected.size)
-            } else {
-                toggle(pos)
+            holder.itemView.setOnLongClickListener {
+                val pos = holder.bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION || pos >= rows.size) {
+                    return@setOnLongClickListener false
+                }
+                if (!selectionMode) {
+                    selectionMode = true
+                    val id = rows[pos].file.id
+                    if (id != null) selected.add(id)
+                    notifyDataSetChanged()
+                    onSelectionChanged(selected.size)
+                } else {
+                    toggle(pos)
+                }
+                true
             }
-            true
         }
 
         holder.job?.cancel()

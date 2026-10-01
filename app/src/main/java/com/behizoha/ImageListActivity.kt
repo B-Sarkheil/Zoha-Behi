@@ -11,6 +11,7 @@ import android.view.View
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -34,16 +35,21 @@ class ImageListActivity : AppCompatActivity() {
     private lateinit var adapter: ImageAdapter
     private lateinit var swipe: SwipeRefreshLayout
     private lateinit var empty: TextView
+    private lateinit var fab: FloatingActionButton
+    private lateinit var touchHelper: ItemTouchHelper
     private lateinit var folderId: String
+    private lateinit var folderName: String
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_images)
         folderId = intent.getStringExtra(EXTRA_FOLDER_ID) ?: ""
-        title = intent.getStringExtra(EXTRA_FOLDER_NAME) ?: getString(R.string.untitled)
+        folderName = intent.getStringExtra(EXTRA_FOLDER_NAME) ?: getString(R.string.untitled)
+        title = folderName
 
         swipe = findViewById(R.id.swipe)
         empty = findViewById(R.id.empty)
+        fab = findViewById(R.id.fabAdd)
         val recycler = findViewById<RecyclerView>(R.id.recycler)
         recycler.layoutManager = LinearLayoutManager(this)
 
@@ -53,14 +59,40 @@ class ImageListActivity : AppCompatActivity() {
                 supportActionBar?.subtitle =
                     if (count > 0) getString(R.string.selected_count, count) else null
                 invalidateOptionsMenu()
-            }
+            },
+            onStartDrag = { holder -> touchHelper.startDrag(holder) }
         )
         recycler.adapter = adapter
 
+        // Drag & drop: long-press drag only works while reorder mode is on.
+        touchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0
+        ) {
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                adapter.moveItem(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
+                return true
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+
+            override fun isLongPressDragEnabled(): Boolean = adapter.reorderMode
+        })
+        touchHelper.attachToRecyclerView(recycler)
+
         swipe.setOnRefreshListener { lifecycleScope.launch { load() } }
-        findViewById<FloatingActionButton>(R.id.fabAdd).setOnClickListener { pickImages() }
+        fab.setOnClickListener { pickImages() }
 
         lifecycleScope.launch { load() }
+    }
+
+    // Up button: just close this screen so the album list is not recreated.
+    override fun onSupportNavigateUp(): Boolean {
+        if (adapter.reorderMode) cancelReorder() else finish()
+        return true
     }
 
     private suspend fun load() {
@@ -78,6 +110,54 @@ class ImageListActivity : AppCompatActivity() {
         } finally {
             swipe.isRefreshing = false
         }
+    }
+
+    // ---- Reorder mode ----
+
+    private fun startReorder() {
+        adapter.startReorder()
+        swipe.isEnabled = false
+        fab.visibility = View.GONE
+        title = getString(R.string.reorder_title)
+        supportActionBar?.subtitle = null
+        invalidateOptionsMenu()
+        Ui.toast(this, getString(R.string.reorder_hint_photos))
+    }
+
+    private fun leaveReorderUi() {
+        swipe.isEnabled = true
+        fab.visibility = View.VISIBLE
+        title = folderName
+        invalidateOptionsMenu()
+    }
+
+    private fun cancelReorder() {
+        adapter.cancelReorder()
+        leaveReorderUi()
+    }
+
+    private fun saveOrder() {
+        val ids = adapter.currentIds()
+        val progress = Ui.progress(this, getString(R.string.loading))
+        lifecycleScope.launch {
+            try {
+                DriveRepo.saveImageOrder(this@ImageListActivity, folderId, ids)
+                adapter.finishReorder()
+                leaveReorderUi()
+                Ui.toast(this@ImageListActivity, getString(R.string.order_saved))
+            } catch (e: Exception) {
+                Ui.toast(
+                    this@ImageListActivity,
+                    getString(R.string.error_generic, e.message ?: e.javaClass.simpleName)
+                )
+            } finally {
+                progress.dismiss()
+            }
+        }
+    }
+
+    override fun onBackPressed() {
+        if (adapter.reorderMode) cancelReorder() else super.onBackPressed()
     }
 
     private fun openViewer(file: DriveFile) {
@@ -184,8 +264,13 @@ class ImageListActivity : AppCompatActivity() {
     }
 
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val reordering = adapter.reorderMode
         menu.findItem(R.id.action_delete)?.isVisible =
-            adapter.selectionMode && adapter.selectedIds.isNotEmpty()
+            !reordering && adapter.selectionMode && adapter.selectedIds.isNotEmpty()
+        menu.findItem(R.id.action_refresh)?.isVisible = !reordering
+        menu.findItem(R.id.action_reorder)?.isVisible = !reordering && adapter.itemCount > 1
+        menu.findItem(R.id.action_save_order)?.isVisible = reordering
+        menu.findItem(R.id.action_cancel_order)?.isVisible = reordering
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -199,13 +284,19 @@ class ImageListActivity : AppCompatActivity() {
                 lifecycleScope.launch { load() }
                 true
             }
+            R.id.action_reorder -> {
+                startReorder()
+                true
+            }
+            R.id.action_save_order -> {
+                saveOrder()
+                true
+            }
+            R.id.action_cancel_order -> {
+                cancelReorder()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
-    }
-
-    private fun goSignIn() {
-        TokenManager.invalidate()
-        startActivity(Intent(this, SignInActivity::class.java))
-        finish()
     }
 }

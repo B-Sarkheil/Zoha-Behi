@@ -26,4 +26,10 @@
     <string name="album_location">Location (optional)</string>
     <string name="album_name_required">Please enter a name</string>
     <string name="create">Create</string>
+    <string name="save">Save</string>
+    <string name="reorder">Reorder</string>
+    <string name="reorder_title">Reorder</string>
+    <string name="reorder_hint">Long-press an album and drag it</string>
+    <string name="order_saved">Order saved</string>
+    <string name="reorder_hint_photos">Drag pictures to reorder. The first picture is the album cover</string>
 </resources>
