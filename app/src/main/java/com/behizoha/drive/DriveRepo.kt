@@ -34,6 +34,7 @@ object DriveRepo {
     private const val ORDER_FILE = ".order"
     private const val INFO_DATE = "album-date"
     private const val INFO_LOCATION = "album-location"
+    private const val COMMENTS_DIR = ".comments"
     private val STAMP = Regex("^\\d{13}_")
 
     private val api: DriveApi get() = B2Http.api
@@ -319,6 +320,75 @@ object DriveRepo {
             }
         }
     }
+
+    /** Loads comments for an image. */
+    suspend fun loadComments(folderId: String, imageName: String): List<Comment> =
+        authed { s ->
+            val commentsFile = "$folderId$COMMENTS_DIR/${imageName}.json"
+            val files = listAll(s, commentsFile, limit = 10, delimiter = null)
+            val file = files.firstOrNull { it.fileName == commentsFile && it.action == "upload" }
+                ?: return@authed emptyList()
+            val fileId = file.fileId ?: return@authed emptyList()
+            readComments(s, fileId)
+        }
+
+    /** Adds a comment to an image. */
+    suspend fun addComment(folderId: String, imageName: String, comment: Comment): List<Comment> =
+        authed { s ->
+            val comments = loadComments(folderId, imageName).toMutableList()
+            comments.add(comment)
+            saveComments(s, folderId, imageName, comments)
+            comments
+        }
+
+    /** Deletes a comment by index. */
+    suspend fun deleteComment(folderId: String, imageName: String, index: Int): List<Comment> =
+        authed { s ->
+            val comments = loadComments(folderId, imageName).toMutableList()
+            if (index in comments.indices) {
+                comments.removeAt(index)
+                saveComments(s, folderId, imageName, comments)
+            }
+            comments
+        }
+
+    private fun commentsFileName(folderId: String, imageName: String): String =
+        "$folderId$COMMENTS_DIR/${imageName}.json"
+
+    private suspend fun saveComments(s: B2Session, folderId: String, imageName: String, comments: List<Comment>) {
+        val fileName = commentsFileName(folderId, imageName)
+        val bytes = Gson().toJson(CommentsFile(comments)).toByteArray(Charsets.UTF_8)
+        val previousId = listAll(s, fileName, limit = 10, delimiter = null)
+            .firstOrNull { it.fileName == fileName }?.fileId
+        putFile(fileName, "application/json", bytes)
+        if (previousId != null) {
+            try {
+                api.deleteFileVersion(
+                    s.apiUrl + "/b2api/v2/b2_delete_file_version", s.token,
+                    DeleteRequest(fileName, previousId)
+                )
+            } catch (ignored: Exception) {
+            }
+        }
+    }
+
+    private suspend fun readComments(s: B2Session, fileId: String): List<Comment> =
+        withContext(Dispatchers.IO) {
+            try {
+                val url = s.downloadUrl + "/b2api/v2/b2_download_file_by_id?fileId=" + fileId
+                val request = Request.Builder().url(url).header("Authorization", s.token).build()
+                http.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        emptyList()
+                    } else {
+                        val text = response.body?.string().orEmpty()
+                        Gson().fromJson(text, CommentsFile::class.java)?.comments ?: emptyList()
+                    }
+                }
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
 
     private suspend fun putFile(
         fileName: String,

@@ -159,7 +159,8 @@ keyPassword=zoha1234
 
 ## Changelog
 
-- **1.1** - Jalali calendar added, provide rename album capbility,
-  back button deselects all when albums are selected, new release keystore
+- **1.2** - Image comments: add/view/delete comments on photos (stored in B2), new release keystore
+- **1.1** - Jalali calendar added, provide rename album capability,
+  back button deselects all when albums are selected
 - **1.0** - Backblaze B2 storage, albums with date/location, cover from the first picture,
   album and picture reordering, themed dialogs, version in the title, custom app icon.

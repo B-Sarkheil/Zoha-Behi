@@ -164,7 +164,8 @@ class ImageListActivity : AppCompatActivity() {
         startActivityForResult(
             Intent(this, ViewerActivity::class.java)
                 .putExtra(ViewerActivity.EXTRA_FILE_ID, file.id)
-                .putExtra(ViewerActivity.EXTRA_FILE_NAME, file.name ?: getString(R.string.untitled)),
+                .putExtra(ViewerActivity.EXTRA_FILE_NAME, file.name ?: getString(R.string.untitled))
+                .putExtra(ViewerActivity.EXTRA_FOLDER_ID, folderId),
             RC_VIEWER
         )
     }
