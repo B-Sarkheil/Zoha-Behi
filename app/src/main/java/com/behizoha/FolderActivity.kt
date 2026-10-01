@@ -188,6 +188,8 @@ class FolderActivity : AppCompatActivity() {
         val reordering = adapter.reorderMode
         menu.findItem(R.id.action_delete)?.isVisible =
             !reordering && adapter.selectionMode && adapter.selectedIds.isNotEmpty()
+        menu.findItem(R.id.action_rename)?.isVisible =
+            !reordering && adapter.selectionMode && adapter.selectedIds.size == 1
         menu.findItem(R.id.action_new_album)?.isVisible = !reordering
         menu.findItem(R.id.action_refresh)?.isVisible = !reordering
         menu.findItem(R.id.action_reorder)?.isVisible = !reordering && adapter.itemCount > 1
@@ -200,6 +202,10 @@ class FolderActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.action_delete -> {
                 deleteSelected()
+                true
+            }
+            R.id.action_rename -> {
+                promptRename()
                 true
             }
             R.id.action_refresh -> {
@@ -278,6 +284,48 @@ class FolderActivity : AppCompatActivity() {
                     )
                 }
                 load()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun promptRename() {
+        val folder = adapter.selectedFolder() ?: return
+        val view = layoutInflater.inflate(R.layout.dialog_rename_album, null)
+        val tilName = view.findViewById<TextInputLayout>(R.id.tilName)
+        val inputName = view.findViewById<TextInputEditText>(R.id.albumName)
+        inputName.setText(folder.name)
+        inputName.setSelection(inputName.text?.length ?: 0)
+
+        val dialog = AlertDialog.Builder(this).setView(view).create()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        view.findViewById<View>(R.id.btnCancel).setOnClickListener { dialog.dismiss() }
+        view.findViewById<View>(R.id.btnRename).setOnClickListener {
+            val name = inputName.text.toString().trim()
+            if (name.isEmpty()) {
+                tilName.error = getString(R.string.album_name_required)
+                return@setOnClickListener
+            }
+            val prefix = folder.id ?: return@setOnClickListener
+            dialog.dismiss()
+            val progress = Ui.progress(this, getString(R.string.loading))
+            lifecycleScope.launch {
+                try {
+                    DriveRepo.renameFolder(this@FolderActivity, prefix, name)
+                    Ui.toast(this@FolderActivity, getString(R.string.renamed))
+                    adapter.clearSelection()
+                    load()
+                } catch (e: DriveRepo.DuplicateAlbumException) {
+                    Ui.toast(this@FolderActivity, getString(R.string.rename_exists))
+                } catch (e: Exception) {
+                    Ui.toast(
+                        this@FolderActivity,
+                        getString(R.string.error_generic, e.message ?: e.javaClass.simpleName)
+                    )
+                } finally {
+                    progress.dismiss()
+                }
             }
         }
         dialog.show()

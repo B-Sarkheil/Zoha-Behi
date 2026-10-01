@@ -18,6 +18,12 @@
         android:showAsAction="ifRoom" />
 
     <item
+        android:id="@+id/action_rename"
+        android:icon="@drawable/ic_rename"
+        android:title="@string/rename"
+        android:showAsAction="ifRoom" />
+
+    <item
         android:id="@+id/action_new_album"
         android:title="@string/new_album"
         android:showAsAction="never" />

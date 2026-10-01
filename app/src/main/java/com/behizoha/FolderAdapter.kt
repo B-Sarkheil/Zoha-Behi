@@ -46,6 +46,10 @@ class FolderAdapter(
     val selectedIds: List<String>
         get() = selected.toList()
 
+    /** The single selected album (used by rename), or null if not exactly one is selected. */
+    fun selectedFolder(): DriveFile? =
+        if (selected.size == 1) rows.firstOrNull { it.file.id == selected.first() }?.file else null
+
     fun submit(folders: List<DriveFile>) {
         rows.clear()
         rows.addAll(folders.map { Row(it) })

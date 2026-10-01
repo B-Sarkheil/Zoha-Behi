@@ -182,6 +182,99 @@ object DriveRepo {
         putFile("$clean/$PLACEHOLDER", "application/octet-stream", ByteArray(0), extra)
     }
 
+    /** Thrown when renaming to a name that already belongs to another album. */
+    class DuplicateAlbumException : IllegalStateException("Album name already exists")
+
+    /**
+     * Renames an album by copying all files to the new prefix and deleting the old ones.
+     * The photo order and the album date/location metadata are preserved.
+     * Throws [DuplicateAlbumException] if the target name is already taken.
+     */
+    suspend fun renameFolder(context: Context, oldPrefix: String, newName: String): Boolean {
+        val clean = newName.trim().replace("/", "-")
+        if (clean.isEmpty()) return false
+        val newPrefix = "$clean/"
+        if (oldPrefix == newPrefix) return true
+
+        authed { s ->
+            // Same root listing pattern as folders().
+            if (listAll(s, "").any { it.action == "folder" && it.fileName == newPrefix }) {
+                throw DuplicateAlbumException()
+            }
+
+            val all = listAll(s, oldPrefix, limit = 100_000, delimiter = null)
+            val orderedPhotos =
+                sortPhotos(all.filter(::isImage), orderFor(s, all, oldPrefix + ORDER_FILE))
+
+            val created = mutableListOf<Pair<String, String>>()
+            val idMap = HashMap<String, String>()
+            try {
+                for (f in all) {
+                    val oldName = f.fileName ?: continue
+                    val srcId = f.fileId ?: continue
+                    if (oldName == oldPrefix + ORDER_FILE) continue
+                    val newNameInFile = newPrefix + oldName.removePrefix(oldPrefix)
+
+                    if (oldName == oldPrefix + PLACEHOLDER) {
+                        // Re-upload the placeholder so date/location metadata is kept exactly.
+                        val extra = mutableMapOf<String, String>()
+                        infoValue(f.fileInfo, INFO_DATE)
+                            ?.let { extra["X-Bz-Info-$INFO_DATE"] = encodeValue(it) }
+                        infoValue(f.fileInfo, INFO_LOCATION)
+                            ?.let { extra["X-Bz-Info-$INFO_LOCATION"] = encodeValue(it) }
+                        putFile(newNameInFile, "application/octet-stream", ByteArray(0), extra)
+                            .fileId?.let { created.add(newNameInFile to it) }
+                        continue
+                    }
+
+                    val copied = api.copyFile(
+                        s.apiUrl + "/b2api/v2/b2_copy_file", s.token,
+                        CopyRequest(
+                            sourceFileId = srcId,
+                            fileName = newNameInFile
+                        )
+                    )
+                    copied.fileId?.let {
+                        created.add(newNameInFile to it)
+                        idMap[srcId] = it
+                    }
+                }
+
+                // Copies get new fileIds, so the order file must be rewritten with the new ids
+                // to keep the same photo order.
+                val newOrder = orderedPhotos.mapNotNull { idMap[it.fileId] }
+                if (newOrder.isNotEmpty()) {
+                    val bytes = Gson().toJson(newOrder).toByteArray(Charsets.UTF_8)
+                    putFile(newPrefix + ORDER_FILE, "application/json", bytes)
+                        .fileId?.let { created.add(newPrefix + ORDER_FILE to it) }
+                }
+            } catch (e: Exception) {
+                // Best-effort cleanup so a failed rename does not leave a partial album behind.
+                for ((name, id) in created) {
+                    try {
+                        api.deleteFileVersion(
+                            s.apiUrl + "/b2api/v2/b2_delete_file_version", s.token,
+                            DeleteRequest(name, id)
+                        )
+                    } catch (ignored: Exception) {
+                    }
+                }
+                throw e
+            }
+
+            // Only start deleting the old album once the new one is complete.
+            for (f in all) {
+                val name = f.fileName ?: continue
+                val id = f.fileId ?: continue
+                api.deleteFileVersion(
+                    s.apiUrl + "/b2api/v2/b2_delete_file_version", s.token,
+                    DeleteRequest(name, id)
+                )
+            }
+        }
+        return true
+    }
+
     /**
      * Deletes the given items and returns how many were removed.
      * An id ending with "/" is an album prefix (all files under it are deleted),
