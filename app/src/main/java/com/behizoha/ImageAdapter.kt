@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.behi.zoha.drive.DriveFile
 import com.google.android.material.imageview.ShapeableImageView
@@ -74,8 +75,9 @@ class ImageAdapter(
         item.id?.let { AuthImageLoader.load(holder.thumb, it) }
 
         val isSelected = selected.contains(item.id)
+        // ContextCompat keeps this working on API 21-22 (Context.getColor needs API 23).
         holder.itemView.setBackgroundColor(
-            if (isSelected) context.getColor(R.color.selected_bg) else Color.TRANSPARENT
+            if (isSelected) ContextCompat.getColor(context, R.color.selected_bg) else Color.TRANSPARENT
         )
         holder.check.visibility = if (selectionMode) View.VISIBLE else View.GONE
         holder.check.isChecked = isSelected

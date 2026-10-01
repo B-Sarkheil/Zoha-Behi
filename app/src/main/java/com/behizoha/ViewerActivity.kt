@@ -14,8 +14,6 @@ import com.behi.zoha.drive.TokenManager
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.load.model.GlideUrl
-import com.bumptech.glide.load.model.LazyHeaders
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
 import com.google.android.material.button.MaterialButton
@@ -50,21 +48,15 @@ class ViewerActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.btnDelete).setOnClickListener { confirmDelete() }
     }
 
+    // Up button: just close this screen so the album list keeps its folder extras.
+    override fun onSupportNavigateUp(): Boolean {
+        finish()
+        return true
+    }
+
     private fun showImage(image: ImageView, progress: ProgressBar) {
-        val url = DriveRepo.mediaUrl(fileId)
-        val token = TokenManager.peek()
-        val model: Any = if (token != null) {
-            GlideUrl(
-                url,
-                LazyHeaders.Builder()
-                    .addHeader("Authorization", "Bearer $token")
-                    .build()
-            )
-        } else {
-            url
-        }
         Glide.with(this)
-            .load(model)
+            .load(AuthImageLoader.model(fileId))
             .listener(object : RequestListener<Drawable> {
                 override fun onLoadFailed(
                     e: GlideException?,
