@@ -16,8 +16,6 @@ import com.google.android.material.imageview.ShapeableImageView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.text.DateFormat
-import java.text.SimpleDateFormat
 import java.util.Locale
 
 class FolderAdapter(
@@ -239,10 +237,9 @@ class FolderAdapter(
         row.coverId?.let { AuthImageLoader.load(holder.cover, it) }
     }
 
-    /** Stored as yyyy-MM-dd; shown in the phone's own date style. Falls back to the raw text. */
+    /** Stored as yyyy-MM-dd; shown in Jalali format. Falls back to the raw text. */
     private fun formatDate(raw: String): String = try {
-        val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(raw)
-        if (parsed != null) DateFormat.getDateInstance(DateFormat.MEDIUM).format(parsed) else raw
+        JalaliDate.formatFromIso(raw)
     } catch (e: Exception) {
         raw
     }

@@ -236,20 +236,26 @@ class FolderActivity : AppCompatActivity() {
         val inputDate = view.findViewById<TextInputEditText>(R.id.albumDate)
         val inputLocation = view.findViewById<TextInputEditText>(R.id.albumLocation)
 
-        // Date defaults to today; tapping the field opens a date picker.
+        // Date defaults to today (Jalali); tapping the field opens a date picker.
         val calendar = Calendar.getInstance()
-        val format = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        inputDate.setText(format.format(calendar.time))
+        val (jy, jm, jd) = JalaliDate.fromGregorian(
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH) + 1,
+            calendar.get(Calendar.DAY_OF_MONTH)
+        )
+        var selectedJalali = Triple(jy, jm, jd)
+        inputDate.setText("%04d/%02d/%02d".format(jy, jm, jd))
         inputDate.setOnClickListener {
+            val (cy, cm, cd) = JalaliDate.toGregorian(selectedJalali.first, selectedJalali.second, selectedJalali.third)
             DatePickerDialog(
                 this,
                 { _, year, month, day ->
-                    calendar.set(year, month, day)
-                    inputDate.setText(format.format(calendar.time))
+                    selectedJalali = JalaliDate.fromGregorian(year, month + 1, day)
+                    inputDate.setText("%04d/%02d/%02d".format(selectedJalali.first, selectedJalali.second, selectedJalali.third))
                 },
-                calendar.get(Calendar.YEAR),
-                calendar.get(Calendar.MONTH),
-                calendar.get(Calendar.DAY_OF_MONTH)
+                cy,
+                cm - 1,
+                cd
             ).show()
         }
 
@@ -264,7 +270,7 @@ class FolderActivity : AppCompatActivity() {
                 tilName.error = getString(R.string.album_name_required)
                 return@setOnClickListener
             }
-            val date = inputDate.text.toString().trim()
+            val date = JalaliDate.toIso(inputDate.text.toString().trim()) ?: inputDate.text.toString().trim()
             val location = inputLocation.text.toString().trim()
             dialog.dismiss()
             lifecycleScope.launch {
