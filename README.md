@@ -130,7 +130,35 @@ app/src/main/java/com/behi/zoha/
   when a request returns HTTP 401.
 - Deleting an album permanently removes every file under its prefix.
 
+## Building Release (Signed)
+
+A release keystore is configured in `keystore.properties` (gitignored).
+
+```powershell
+# Build signed APK
+.\gradlew.bat assembleRelease
+# output: app\build\outputs\apk\release\app-release.apk
+
+# Build signed AAB (for Play Store)
+.\gradlew.bat bundleRelease
+# output: app\build\outputs\bundle\release\app-release.aab
+```
+
+**First-time setup** (already done):
+1. Generated `release.keystore` (2048-bit RSA, valid 10,000 days)
+2. Created `keystore.properties` with credentials
+3. Configured `signingConfigs.release` in `app/build.gradle`
+
+**Credentials** (keep secure, do not commit):
+```
+storeFile=release.keystore
+storePassword=zoha1234
+keyAlias=zoha-release
+keyPassword=zoha1234
+```
+
 ## Changelog
 
+- **1.1** - Back button deselects all when albums are selected; new release keystore
 - **1.0** - Backblaze B2 storage, albums with date/location, cover from the first picture,
   album and picture reordering, themed dialogs, version in the title, custom app icon.

@@ -152,7 +152,13 @@ class FolderActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
-        if (adapter.reorderMode) cancelReorder() else super.onBackPressed()
+        if (adapter.reorderMode) {
+            cancelReorder()
+        } else if (adapter.selectionMode) {
+            adapter.clearSelection()
+        } else {
+            super.onBackPressed()
+        }
     }
 
     private fun deleteSelected() {

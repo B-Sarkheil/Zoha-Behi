@@ -1,6 +1,12 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace 'com.behi.zoha'
     compileSdk 30
@@ -12,6 +18,15 @@ android {
         targetSdkVersion 30
         versionCode 2
         versionName '1.1'
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("../" + (keystoreProperties['storeFile'] ?: "release.keystore"))
+            storePassword keystoreProperties['storePassword'] ?: "zoha1234"
+            keyAlias keystoreProperties['keyAlias'] ?: "zoha-release"
+            keyPassword keystoreProperties['keyPassword'] ?: "zoha1234"
+        }
     }
 
     compileOptions {
@@ -27,6 +42,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
 

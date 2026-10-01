@@ -75,6 +75,7 @@ desktop.ini
 
 *.jks
 *.keystore
+keystore.properties
 
 # ================================
 # Firebase / Google Services
