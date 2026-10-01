@@ -1,0 +1,96 @@
+# ================================
+# Android Studio / IntelliJ
+# ================================
+
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Android Studio local settings
+/.idea/workspace.xml
+/.idea/usage.statistics.xml
+/.idea/dictionaries/
+.idea/caches/
+.idea/shelf/
+
+# ================================
+# Gradle
+# ================================
+
+.gradle/
+build/
+**/build/
+
+# ================================
+# Android Build
+# ================================
+
+/captures/
+/.externalNativeBuild/
+/.cxx/
+
+# ================================
+# Local configuration
+# ================================
+
+local.properties
+
+# ================================
+# Kotlin
+# ================================
+
+.kotlin/
+
+# ================================
+# Generated / temporary files
+# ================================
+
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# ================================
+# OS generated files
+# ================================
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ================================
+# APK / AAB
+# ================================
+
+*.apk
+*.ap_
+*.aab
+
+# ================================
+# Keystore / signing files
+# ================================
+
+*.jks
+*.keystore
+
+# ================================
+# Firebase / Google Services
+# ================================
+
+google-services.json
+
+# ================================
+# Native build
+# ================================
+
+.externalNativeBuild/
+.cxx/
+
+# ================================
+# Node.js (if used by the project)
+# ================================
+
+node_modules/
