@@ -7,5 +7,5 @@
     <color name="selected_bg">#E8DEF8</color>
     <color name="danger">#E53935</color>
     <color name="viewer_bg">#000000</color>
-    <color name="dialog_button">#7E57C2</color> <!-- Dialog button color, readable on both light and dark dialog backgrounds. -->
+    <color name="dialog_button">#4527A0</color> <!-- Dark purple: readable on the light dialog background. -->
 </resources>
