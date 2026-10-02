@@ -172,7 +172,7 @@ keyPassword=<your-key-password>
 - **1.3** - Comments rewrite: visible comments bar in the viewer, author name per phone,
   comments keyed per picture (no clash between same-named pictures), delete by id, comments
   removed together with their picture, no crash or data loss on network errors, Jalali date
-  on comments
+  on comments, providing edit album date and location ability
 - **1.2** - Image comments: add/view/delete comments on photos (stored in B2)
 - **1.1** - Jalali calendar added, provide rename album capability,
   back button deselects all when albums are selected, new release keystore

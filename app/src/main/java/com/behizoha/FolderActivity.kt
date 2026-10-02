@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.behi.zoha.drive.DriveAuthException
+import com.behi.zoha.drive.DriveFile
 import com.behi.zoha.drive.DriveRepo
 import com.behi.zoha.drive.TokenManager
 import com.google.android.material.textfield.TextInputEditText
@@ -295,13 +296,72 @@ class FolderActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    /** Loads the current date/location of the selected album, then shows the edit dialog. */
     private fun promptRename() {
         val folder = adapter.selectedFolder() ?: return
+        val prefix = folder.id ?: return
+        val progress = Ui.progress(this, getString(R.string.loading))
+        lifecycleScope.launch {
+            val stats = try {
+                DriveRepo.folderStats(this@FolderActivity, prefix)
+            } catch (e: Exception) {
+                progress.dismiss()
+                Ui.toast(
+                    this@FolderActivity,
+                    getString(R.string.error_generic, e.message ?: e.javaClass.simpleName)
+                )
+                return@launch
+            }
+            progress.dismiss()
+            showEditDialog(folder, prefix, stats.date, stats.location)
+        }
+    }
+
+    private fun showEditDialog(
+        folder: DriveFile,
+        prefix: String,
+        currentDateIso: String?,
+        currentLocation: String?
+    ) {
         val view = layoutInflater.inflate(R.layout.dialog_rename_album, null)
         val tilName = view.findViewById<TextInputLayout>(R.id.tilName)
         val inputName = view.findViewById<TextInputEditText>(R.id.albumName)
+        val inputDate = view.findViewById<TextInputEditText>(R.id.albumDate)
+        val inputLocation = view.findViewById<TextInputEditText>(R.id.albumLocation)
+
         inputName.setText(folder.name)
         inputName.setSelection(inputName.text?.length ?: 0)
+        inputLocation.setText(currentLocation.orEmpty())
+
+        // Picker starts at the stored date (or today if the album has none).
+        val today = Calendar.getInstance()
+        var selectedJalali = JalaliDate.fromGregorian(
+            today.get(Calendar.YEAR),
+            today.get(Calendar.MONTH) + 1,
+            today.get(Calendar.DAY_OF_MONTH)
+        )
+        if (!currentDateIso.isNullOrBlank()) {
+            try {
+                val p = currentDateIso.split("-")
+                selectedJalali = JalaliDate.fromGregorian(p[0].toInt(), p[1].toInt(), p[2].toInt())
+                inputDate.setText(
+                    "%04d/%02d/%02d".format(selectedJalali.first, selectedJalali.second, selectedJalali.third)
+                )
+            } catch (e: Exception) {
+                inputDate.setText(currentDateIso)
+            }
+        }
+        inputDate.setOnClickListener {
+            JalaliDatePickerDialog(
+                this,
+                selectedJalali.first,
+                selectedJalali.second,
+                selectedJalali.third
+            ) { year, month, day ->
+                selectedJalali = Triple(year, month, day)
+                inputDate.setText("%04d/%02d/%02d".format(year, month, day))
+            }.show()
+        }
 
         val dialog = AlertDialog.Builder(this).setView(view).create()
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -313,13 +373,15 @@ class FolderActivity : AppCompatActivity() {
                 tilName.error = getString(R.string.album_name_required)
                 return@setOnClickListener
             }
-            val prefix = folder.id ?: return@setOnClickListener
+            val dateText = inputDate.text.toString().trim()
+            val date = if (dateText.isEmpty()) "" else (JalaliDate.toIso(dateText) ?: dateText)
+            val location = inputLocation.text.toString().trim()
             dialog.dismiss()
             val progress = Ui.progress(this, getString(R.string.loading))
             lifecycleScope.launch {
                 try {
-                    DriveRepo.renameFolder(this@FolderActivity, prefix, name)
-                    Ui.toast(this@FolderActivity, getString(R.string.renamed))
+                    DriveRepo.updateFolder(this@FolderActivity, prefix, name, date, location)
+                    Ui.toast(this@FolderActivity, getString(R.string.album_updated))
                     adapter.clearSelection()
                     load()
                 } catch (e: DriveRepo.DuplicateAlbumException) {

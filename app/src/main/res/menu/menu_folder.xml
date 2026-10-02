@@ -20,7 +20,7 @@
     <item
         android:id="@+id/action_rename"
         android:icon="@drawable/ic_rename"
-        android:title="@string/rename"
+        android:title="@string/edit"
         android:showAsAction="ifRoom" />
 
     <item
