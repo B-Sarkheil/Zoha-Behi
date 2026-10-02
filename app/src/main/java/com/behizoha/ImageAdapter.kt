@@ -99,6 +99,7 @@ class ImageAdapter(
         val thumb: ShapeableImageView = view.findViewById(R.id.thumb)
         val name: TextView = view.findViewById(R.id.name)
         val date: TextView = view.findViewById(R.id.date)
+        val commentCount: TextView = view.findViewById(R.id.commentCount)
         val check: CheckBox = view.findViewById(R.id.check)
         val handle: ImageView = view.findViewById(R.id.handle)
     }
@@ -114,7 +115,10 @@ class ImageAdapter(
         val item = items[position]
         val context = holder.itemView.context
         holder.name.text = item.name ?: context.getString(R.string.untitled)
-        holder.date.text = item.createdTime?.take(10) ?: ""
+        // The stored date is the upload date, not the date the photo was taken.
+        val uploadDate = item.createdTime?.take(10)
+        holder.date.text = if (uploadDate.isNullOrEmpty()) "" else "upload date: $uploadDate"
+        holder.commentCount.text = item.commentCount.toString()
         item.id?.let { AuthImageLoader.load(holder.thumb, it) }
 
         val isSelected = selected.contains(item.id)

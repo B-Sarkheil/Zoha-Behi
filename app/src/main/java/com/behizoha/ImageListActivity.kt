@@ -183,11 +183,8 @@ class ImageListActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == RC_VIEWER) {
-            if (resultCode == Activity.RESULT_OK &&
-                data?.getBooleanExtra(EXTRA_DELETED, false) == true
-            ) {
-                lifecycleScope.launch { load() }
-            }
+            // Always reload: the photo may have been deleted or its comment count may have changed.
+            lifecycleScope.launch { load() }
         } else if (requestCode == RC_PICK && resultCode == Activity.RESULT_OK && data != null) {
             val uris = ArrayList<Uri>()
             val clip: ClipData? = data.clipData
