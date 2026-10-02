@@ -169,6 +169,7 @@ keyPassword=<your-key-password>
 
 ## Changelog
 
+- **1.4** - Grigorian calndear selection, new B2 key and safe security problems, new logo
 - **1.3** - Comments rewrite: visible comments bar in the viewer, author name per phone,
   comments keyed per picture (no clash between same-named pictures), delete by id, comments
   removed together with their picture, no crash or data loss on network errors, Jalali date
