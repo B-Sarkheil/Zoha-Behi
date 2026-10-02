@@ -89,9 +89,13 @@ class ImageListActivity : AppCompatActivity() {
         lifecycleScope.launch { load() }
     }
 
-    // Up button: just close this screen so the album list is not recreated.
+    // Up button: cancel reorder or clear selection first; otherwise just close this screen.
     override fun onSupportNavigateUp(): Boolean {
-        if (adapter.reorderMode) cancelReorder() else finish()
+        when {
+            adapter.reorderMode -> cancelReorder()
+            adapter.selectionMode -> adapter.clearSelection()
+            else -> finish()
+        }
         return true
     }
 
@@ -156,8 +160,13 @@ class ImageListActivity : AppCompatActivity() {
         }
     }
 
+    // Back: cancel reorder, then clear selection, then leave the screen.
     override fun onBackPressed() {
-        if (adapter.reorderMode) cancelReorder() else super.onBackPressed()
+        when {
+            adapter.reorderMode -> cancelReorder()
+            adapter.selectionMode -> adapter.clearSelection()
+            else -> super.onBackPressed()
+        }
     }
 
     private fun openViewer(file: DriveFile) {
