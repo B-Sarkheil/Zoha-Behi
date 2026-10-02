@@ -51,4 +51,7 @@
     <string name="change_name">Change my name</string>
     <string name="your_name_hint">Your name</string>
     <string name="name_dialog_title">Who is commenting?</string>
+    <string name="edit">Edit</string>
+    <string name="edit_album">Edit album</string>
+    <string name="album_updated">Album updated</string>
 </resources>

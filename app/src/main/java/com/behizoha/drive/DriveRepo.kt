@@ -219,26 +219,73 @@ object DriveRepo {
     ) {
         val clean = name.trim().replace("/", "-")
         if (clean.isEmpty()) return
+        putFile("$clean/$PLACEHOLDER", "application/octet-stream", ByteArray(0), infoHeaders(date, location))
+    }
+
+    /** Builds the B2 file-info headers for the album date/location (blank values are skipped). */
+    private fun infoHeaders(date: String?, location: String?): Map<String, String> {
         val extra = mutableMapOf<String, String>()
         if (!date.isNullOrBlank()) extra["X-Bz-Info-$INFO_DATE"] = encodeValue(date.trim())
         if (!location.isNullOrBlank()) extra["X-Bz-Info-$INFO_LOCATION"] = encodeValue(location.trim())
-        putFile("$clean/$PLACEHOLDER", "application/octet-stream", ByteArray(0), extra)
+        return extra
     }
 
     /** Thrown when renaming to a name that already belongs to another album. */
     class DuplicateAlbumException : IllegalStateException("Album name already exists")
 
     /**
-     * Renames an album by copying all files to the new prefix and deleting the old ones.
-     * The photo order and the album date/location metadata are preserved.
+     * Updates an album: name, date and location. A blank date/location clears that value.
+     * If the name is unchanged only the placeholder is rewritten; otherwise the album is renamed.
      * Throws [DuplicateAlbumException] if the target name is already taken.
      */
-    suspend fun renameFolder(context: Context, oldPrefix: String, newName: String): Boolean {
+    suspend fun updateFolder(
+        context: Context,
+        oldPrefix: String,
+        newName: String,
+        date: String,
+        location: String
+    ): Boolean {
         val clean = newName.trim().replace("/", "-")
         if (clean.isEmpty()) return false
         val newPrefix = "$clean/"
-        if (oldPrefix == newPrefix) return true
+        if (oldPrefix == newPrefix) {
+            updateFolderInfo(oldPrefix, date, location)
+            return true
+        }
+        return renameFolder(oldPrefix, newPrefix, date, location)
+    }
 
+    /** Rewrites the placeholder of an album with new date/location and removes the old version. */
+    private suspend fun updateFolderInfo(prefix: String, date: String, location: String) {
+        val name = prefix + PLACEHOLDER
+        val previousId = authed { s ->
+            listAll(s, name, limit = 10, delimiter = null)
+                .firstOrNull { it.fileName == name && it.action == "upload" }?.fileId
+        }
+        putFile(name, "application/octet-stream", ByteArray(0), infoHeaders(date, location))
+        if (previousId != null) {
+            try {
+                authed { s ->
+                    api.deleteFileVersion(
+                        s.apiUrl + "/b2api/v2/b2_delete_file_version", s.token,
+                        DeleteRequest(name, previousId)
+                    )
+                }
+            } catch (ignored: Exception) {
+            }
+        }
+    }
+
+    /**
+     * Renames an album by copying all files to the new prefix and deleting the old ones.
+     * The photo order is preserved; the placeholder is written with the given date/location.
+     */
+    private suspend fun renameFolder(
+        oldPrefix: String,
+        newPrefix: String,
+        date: String,
+        location: String
+    ): Boolean {
         authed { s ->
             // Same root listing pattern as folders().
             if (listAll(s, "").any { it.action == "folder" && it.fileName == newPrefix }) {
@@ -252,6 +299,7 @@ object DriveRepo {
             val created = mutableListOf<Pair<String, String>>()
             val idMap = HashMap<String, String>()
             try {
+                var placeholderDone = false
                 for (f in all) {
                     val oldName = f.fileName ?: continue
                     val srcId = f.fileId ?: continue
@@ -259,14 +307,12 @@ object DriveRepo {
                     val newNameInFile = newPrefix + oldName.removePrefix(oldPrefix)
 
                     if (oldName == oldPrefix + PLACEHOLDER) {
-                        // Re-upload the placeholder so date/location metadata is kept exactly.
-                        val extra = mutableMapOf<String, String>()
-                        infoValue(f.fileInfo, INFO_DATE)
-                            ?.let { extra["X-Bz-Info-$INFO_DATE"] = encodeValue(it) }
-                        infoValue(f.fileInfo, INFO_LOCATION)
-                            ?.let { extra["X-Bz-Info-$INFO_LOCATION"] = encodeValue(it) }
-                        putFile(newNameInFile, "application/octet-stream", ByteArray(0), extra)
-                            .fileId?.let { created.add(newNameInFile to it) }
+                        // Re-upload the placeholder with the new date/location metadata.
+                        putFile(
+                            newNameInFile, "application/octet-stream", ByteArray(0),
+                            infoHeaders(date, location)
+                        ).fileId?.let { created.add(newNameInFile to it) }
+                        placeholderDone = true
                         continue
                     }
 
@@ -281,6 +327,13 @@ object DriveRepo {
                         created.add(newNameInFile to it)
                         idMap[srcId] = it
                     }
+                }
+
+                // Old albums may have no placeholder; create one if there is metadata to keep.
+                if (!placeholderDone && (date.isNotBlank() || location.isNotBlank())) {
+                    val name = newPrefix + PLACEHOLDER
+                    putFile(name, "application/octet-stream", ByteArray(0), infoHeaders(date, location))
+                        .fileId?.let { created.add(name to it) }
                 }
 
                 // Copies get new fileIds, so the order file must be rewritten with the new ids
