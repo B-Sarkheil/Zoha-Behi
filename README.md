@@ -19,6 +19,10 @@ The title bar shows the app name and version, e.g. `Zoha&Behi - Ver.1.0`.
 - **Reorder albums and pictures** - menu -> Reorder, drag with the handle (or long-press),
   then Save. The order is shared by every phone using the same bucket. The first picture
   in the order becomes the album cover
+- **Comments on pictures** - a "Comments (n)" bar at the bottom of the viewer opens a
+  sheet where you can add comments. Each comment shows the author, a Jalali date and time.
+  Long-press a comment to delete it. Each phone has its own author name (asked on the first
+  comment, changeable from the viewer menu -> Change my name)
 - Pull-to-refresh, dark mode (DayNight theme), purple theme
 - Version shown in the title, read from `versionName` in `app/build.gradle`
 
@@ -52,6 +56,7 @@ B2 has no real folders, so the app uses name prefixes:
 | Album | A prefix such as `Trip/` |
 | Picture | `Trip/<timestamp>_<original name>` (the timestamp avoids name clashes between phones) |
 | Empty album marker | `Trip/.bzEmpty` - also holds the album **date** and **location** as file info |
+| Picture comments | `Trip/.comments/<timestamp>_<original name>.json` (JSON list of comments with id, author, text, time). Deleted together with the picture or the album |
 | Album order | `.order` in the bucket root (JSON list of album prefixes) |
 | Picture order | `Trip/.order` (JSON list of picture file IDs) |
 
@@ -82,8 +87,8 @@ Notes for this machine:
 The version is managed in one place, `app/build.gradle`:
 
 ```groovy
-versionCode 2        // must increase with every release
-versionName '1.1'    // shown in the title as "Zoha&Behi - Ver.1.1"
+versionCode 4        // must increase with every release
+versionName '1.3'    // shown in the title as "Zoha&Behi - Ver.1.3"
 ```
 
 ## App icon
@@ -98,7 +103,9 @@ uses `@mipmap/ic_launcher`.
 2. Menu -> **New album** to create an album (name, date, location).
 3. Tap an album to see its pictures; tap a picture to view it full-screen.
 4. Tap the **+** button to upload pictures.
-5. Long-press items to multi-select and delete.
+   In the full-screen viewer, tap the **Comments** bar to read and add comments.
+5. Long-press items to multi-select and delete. In the comments sheet, long-press a comment
+   to delete it. Menu -> **Change my name** changes the author name used on this phone.
 6. Menu -> **Reorder** to change the order of albums (album list) or pictures (inside an
    album). Drag, then **Save**. **Cancel** or Back discards the changes.
 
@@ -111,13 +118,13 @@ app/src/main/java/com/behi/zoha/
 ├── FolderAdapter.kt       # album cards (cover, name, date/location, count, drag handle)
 ├── ImageListActivity.kt   # picture list, upload, multi-select delete, picture reorder
 ├── ImageAdapter.kt
-├── ViewerActivity.kt      # full-screen viewer + delete
+├── ViewerActivity.kt      # full-screen viewer + delete + comments sheet
 ├── AuthImageLoader.kt     # Glide loading with the B2 authorization header
 ├── Ui.kt                  # dialogs/toasts helpers
 └── drive/
     ├── B2Config.kt         # bucket credentials (do not publish)
     ├── DriveApi.kt         # Retrofit interface + models (list / upload / delete)
-    ├── DriveRepo.kt        # albums, pictures, upload, delete, order files
+    ├── DriveRepo.kt        # albums, pictures, upload, delete, order files, comments
     └── TokenManager.kt     # B2 authorization/session cache
 ```
 
@@ -129,6 +136,9 @@ app/src/main/java/com/behi/zoha/
 - The B2 authorization token expires after 24 hours; the app re-authorizes automatically
   when a request returns HTTP 401.
 - Deleting an album permanently removes every file under its prefix.
+- Comments are stored in one JSON file per picture. If two phones post a comment at exactly
+  the same moment, one of them may be lost (B2 has no locking).
+- Comment operations fail with a message (and change nothing) when the network is down.
 
 ## Building Release (Signed)
 
@@ -152,15 +162,19 @@ A release keystore is configured in `keystore.properties` (gitignored).
 **Credentials** (keep secure, do not commit):
 ```
 storeFile=release.keystore
-storePassword=zoha1234
+storePassword=<your-store-password>
 keyAlias=zoha-release
-keyPassword=zoha1234
+keyPassword=<your-key-password>
 ```
 
 ## Changelog
 
-- **1.2** - Image comments: add/view/delete comments on photos (stored in B2), new release keystore
+- **1.3** - Comments rewrite: visible comments bar in the viewer, author name per phone,
+  comments keyed per picture (no clash between same-named pictures), delete by id, comments
+  removed together with their picture, no crash or data loss on network errors, Jalali date
+  on comments
+- **1.2** - Image comments: add/view/delete comments on photos (stored in B2)
 - **1.1** - Jalali calendar added, provide rename album capability,
-  back button deselects all when albums are selected
+  back button deselects all when albums are selected, new release keystore
 - **1.0** - Backblaze B2 storage, albums with date/location, cover from the first picture,
   album and picture reordering, themed dialogs, version in the title, custom app icon.
