@@ -11,6 +11,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -151,6 +152,7 @@ object DriveRepo {
                     DriveFile(
                         id = it.fileId,
                         name = (it.fileName ?: "").removePrefix(folderId).replaceFirst(STAMP, ""),
+                        storedName = (it.fileName ?: "").removePrefix(folderId),
                         mimeType = it.contentType,
                         createdTime = iso(it.uploadTimestamp)
                     )
@@ -321,42 +323,77 @@ object DriveRepo {
         }
     }
 
-    /** Loads comments for an image. */
-    suspend fun loadComments(folderId: String, imageName: String): List<Comment> =
-        authed { s ->
-            val commentsFile = "$folderId$COMMENTS_DIR/${imageName}.json"
-            val files = listAll(s, commentsFile, limit = 10, delimiter = null)
-            val file = files.firstOrNull { it.fileName == commentsFile && it.action == "upload" }
-                ?: return@authed emptyList()
-            val fileId = file.fileId ?: return@authed emptyList()
-            readComments(s, fileId)
+    /**
+     * Loads comments for an image. Comments are keyed by the stored name (with timestamp),
+     * so two photos with the same original name never share comments.
+     * [legacyName] is the old key (name without timestamp) used only as a read fallback.
+     * Throws on network/parse errors instead of returning an empty list.
+     */
+    suspend fun loadComments(
+        folderId: String,
+        storedName: String,
+        legacyName: String? = null
+    ): List<Comment> = authed { s -> fetchComments(s, folderId, storedName, legacyName) }
+
+    /** Adds a comment to an image. Fails (throws) if the existing comments cannot be read. */
+    suspend fun addComment(
+        folderId: String,
+        storedName: String,
+        comment: Comment,
+        legacyName: String? = null
+    ): List<Comment> = authed { s ->
+        val comments = fetchComments(s, folderId, storedName, legacyName).toMutableList()
+        comments.add(comment)
+        saveComments(s, folderId, storedName, comments)
+        comments
+    }
+
+    /** Deletes a comment by index. Fails (throws) if the existing comments cannot be read. */
+    suspend fun deleteComment(
+        folderId: String,
+        storedName: String,
+        index: Int,
+        legacyName: String? = null
+    ): List<Comment> = authed { s ->
+        val comments = fetchComments(s, folderId, storedName, legacyName).toMutableList()
+        if (index in comments.indices) {
+            comments.removeAt(index)
+            saveComments(s, folderId, storedName, comments)
         }
+        comments
+    }
 
-    /** Adds a comment to an image. */
-    suspend fun addComment(folderId: String, imageName: String, comment: Comment): List<Comment> =
-        authed { s ->
-            val comments = loadComments(folderId, imageName).toMutableList()
-            comments.add(comment)
-            saveComments(s, folderId, imageName, comments)
-            comments
+    private fun commentsFileName(folderId: String, name: String): String =
+        "$folderId$COMMENTS_DIR/$name.json"
+
+    /** Reads the comments file (new key first, then the legacy key). Empty only if no file exists. */
+    private suspend fun fetchComments(
+        s: B2Session,
+        folderId: String,
+        storedName: String,
+        legacyName: String?
+    ): List<Comment> {
+        val candidates = listOfNotNull(
+            commentsFileName(folderId, storedName),
+            legacyName?.let { commentsFileName(folderId, it) }
+        ).distinct()
+        for (name in candidates) {
+            val fileId = listAll(s, name, limit = 10, delimiter = null)
+                .firstOrNull { it.fileName == name && it.action == "upload" }
+                ?.fileId
+                ?: continue
+            return readComments(s, fileId)
         }
+        return emptyList()
+    }
 
-    /** Deletes a comment by index. */
-    suspend fun deleteComment(folderId: String, imageName: String, index: Int): List<Comment> =
-        authed { s ->
-            val comments = loadComments(folderId, imageName).toMutableList()
-            if (index in comments.indices) {
-                comments.removeAt(index)
-                saveComments(s, folderId, imageName, comments)
-            }
-            comments
-        }
-
-    private fun commentsFileName(folderId: String, imageName: String): String =
-        "$folderId$COMMENTS_DIR/${imageName}.json"
-
-    private suspend fun saveComments(s: B2Session, folderId: String, imageName: String, comments: List<Comment>) {
-        val fileName = commentsFileName(folderId, imageName)
+    private suspend fun saveComments(
+        s: B2Session,
+        folderId: String,
+        storedName: String,
+        comments: List<Comment>
+    ) {
+        val fileName = commentsFileName(folderId, storedName)
         val bytes = Gson().toJson(CommentsFile(comments)).toByteArray(Charsets.UTF_8)
         val previousId = listAll(s, fileName, limit = 10, delimiter = null)
             .firstOrNull { it.fileName == fileName }?.fileId
@@ -372,21 +409,21 @@ object DriveRepo {
         }
     }
 
+    /** Downloads and parses a comments file. Throws on any failure so callers never overwrite with partial data. */
     private suspend fun readComments(s: B2Session, fileId: String): List<Comment> =
         withContext(Dispatchers.IO) {
-            try {
-                val url = s.downloadUrl + "/b2api/v2/b2_download_file_by_id?fileId=" + fileId
-                val request = Request.Builder().url(url).header("Authorization", s.token).build()
-                http.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        emptyList()
-                    } else {
-                        val text = response.body?.string().orEmpty()
-                        Gson().fromJson(text, CommentsFile::class.java)?.comments ?: emptyList()
-                    }
+            val url = s.downloadUrl + "/b2api/v2/b2_download_file_by_id?fileId=" + fileId
+            val request = Request.Builder().url(url).header("Authorization", s.token).build()
+            http.newCall(request).execute().use { response ->
+                if (response.code == 401) {
+                    // Let authed() refresh the token and retry.
+                    throw HttpException(retrofit2.Response.error<Any>(401, "".toResponseBody(null)))
                 }
-            } catch (e: Exception) {
-                emptyList()
+                if (!response.isSuccessful) {
+                    throw java.io.IOException("Could not read comments (HTTP ${response.code})")
+                }
+                val text = response.body?.string().orEmpty()
+                Gson().fromJson(text, CommentsFile::class.java)?.comments ?: emptyList()
             }
         }
 

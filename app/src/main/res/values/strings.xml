@@ -41,4 +41,11 @@
     <string name="comments">Comments</string>
     <string name="comment_hint">Write a comment…</string>
     <string name="send">Send</string>
+    <string name="comments_with_count">Comments (%d)</string>
+    <string name="comments_empty">No comments yet</string>
+    <string name="comments_load_failed">Could not load comments: %s</string>
+    <string name="comment_send_failed">Could not send comment: %s</string>
+    <string name="comment_delete_failed">Could not delete comment: %s</string>
+    <string name="delete_comment_title">Delete comment?</string>
+    <string name="delete_comment_message">This comment will be permanently deleted.</string>
 </resources>

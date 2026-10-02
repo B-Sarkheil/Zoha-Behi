@@ -17,7 +17,9 @@ data class DriveFile(
     val id: String? = null,
     val name: String? = null,
     val mimeType: String? = null,
-    val createdTime: String? = null
+    val createdTime: String? = null,
+    // Full stored name without the album prefix (keeps the timestamp). Unique per photo.
+    val storedName: String? = null
 )
 
 /** Comment on an image. */
