@@ -305,6 +305,22 @@ object DriveRepo {
                 s.apiUrl + "/b2api/v2/b2_delete_file_version", s.token,
                 DeleteRequest(fileName, fileId)
             )
+            // Also remove this photo's comments file (best effort) so it does not stay orphaned.
+            try {
+                val slash = fileName.lastIndexOf('/')
+                val prefix = if (slash >= 0) fileName.substring(0, slash + 1) else ""
+                val commentsName = commentsFileName(prefix, fileName.substring(slash + 1))
+                val found = listAll(s, commentsName, limit = 10, delimiter = null)
+                    .filter { it.fileName == commentsName }
+                for (c in found) {
+                    val cid = c.fileId ?: continue
+                    api.deleteFileVersion(
+                        s.apiUrl + "/b2api/v2/b2_delete_file_version", s.token,
+                        DeleteRequest(commentsName, cid)
+                    )
+                }
+            } catch (ignored: Exception) {
+            }
         }
     }
 
@@ -348,19 +364,19 @@ object DriveRepo {
         comments
     }
 
-    /** Deletes a comment by index. Fails (throws) if the existing comments cannot be read. */
+    /** Deletes a comment by its id. Fails (throws) if the existing comments cannot be read. */
     suspend fun deleteComment(
         folderId: String,
         storedName: String,
-        index: Int,
+        commentId: String,
         legacyName: String? = null
     ): List<Comment> = authed { s ->
-        val comments = fetchComments(s, folderId, storedName, legacyName).toMutableList()
-        if (index in comments.indices) {
-            comments.removeAt(index)
-            saveComments(s, folderId, storedName, comments)
+        val comments = fetchComments(s, folderId, storedName, legacyName)
+        val remaining = comments.filter { it.id != commentId }
+        if (remaining.size != comments.size) {
+            saveComments(s, folderId, storedName, remaining)
         }
-        comments
+        remaining
     }
 
     private fun commentsFileName(folderId: String, name: String): String =
@@ -382,7 +398,10 @@ object DriveRepo {
                 .firstOrNull { it.fileName == name && it.action == "upload" }
                 ?.fileId
                 ?: continue
-            return readComments(s, fileId)
+            // Old comments have no id; give them a stable one so they can be deleted by id.
+            return readComments(s, fileId).map { c ->
+                if (c.id.isBlank()) c.copy(id = "legacy-${c.timestamp}-${(c.author + c.text).hashCode()}") else c
+            }
         }
         return emptyList()
     }
