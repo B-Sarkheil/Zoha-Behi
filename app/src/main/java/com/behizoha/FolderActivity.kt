@@ -21,6 +21,7 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import android.app.DatePickerDialog
 
 class FolderActivity : AppCompatActivity() {
 
@@ -246,25 +247,25 @@ class FolderActivity : AppCompatActivity() {
         val inputDate = view.findViewById<TextInputEditText>(R.id.albumDate)
         val inputLocation = view.findViewById<TextInputEditText>(R.id.albumLocation)
 
-        // Date defaults to today (Jalali); tapping the field opens a date picker.
+        // The date is picked with a Gregorian calendar (defaults to today) and stored as yyyy-MM-dd.
+        // Screens convert it to Jalali when displaying.
         val calendar = Calendar.getInstance()
-        val (jy, jm, jd) = JalaliDate.fromGregorian(
+        var selectedIso = "%04d-%02d-%02d".format(
             calendar.get(Calendar.YEAR),
             calendar.get(Calendar.MONTH) + 1,
             calendar.get(Calendar.DAY_OF_MONTH)
         )
-        var selectedJalali = Triple(jy, jm, jd)
-        inputDate.setText("%04d/%02d/%02d".format(jy, jm, jd))
+        inputDate.setText(selectedIso)
         inputDate.setOnClickListener {
-            JalaliDatePickerDialog(
+            val p = selectedIso.split("-")
+            DatePickerDialog(
                 this,
-                selectedJalali.first,
-                selectedJalali.second,
-                selectedJalali.third
-            ) { year, month, day ->
-                selectedJalali = Triple(year, month, day)
-                inputDate.setText("%04d/%02d/%02d".format(year, month, day))
-            }.show()
+                { _, year, month, day ->
+                    selectedIso = "%04d-%02d-%02d".format(year, month + 1, day)
+                    inputDate.setText(selectedIso)
+                },
+                p[0].toInt(), p[1].toInt() - 1, p[2].toInt()
+            ).show()
         }
 
         val dialog = AlertDialog.Builder(this).setView(view).create()
@@ -278,12 +279,11 @@ class FolderActivity : AppCompatActivity() {
                 tilName.error = getString(R.string.album_name_required)
                 return@setOnClickListener
             }
-            val date = JalaliDate.toIso(inputDate.text.toString().trim()) ?: inputDate.text.toString().trim()
             val location = inputLocation.text.toString().trim()
             dialog.dismiss()
             lifecycleScope.launch {
                 try {
-                    DriveRepo.createFolder(this@FolderActivity, name, date, location)
+                    DriveRepo.createFolder(this@FolderActivity, name, selectedIso, location)
                 } catch (e: Exception) {
                     Ui.toast(
                         this@FolderActivity,
@@ -333,34 +333,24 @@ class FolderActivity : AppCompatActivity() {
         inputName.setSelection(inputName.text?.length ?: 0)
         inputLocation.setText(currentLocation.orEmpty())
 
-        // Picker starts at the stored date (or today if the album has none).
-        val today = Calendar.getInstance()
-        var selectedJalali = JalaliDate.fromGregorian(
-            today.get(Calendar.YEAR),
-            today.get(Calendar.MONTH) + 1,
-            today.get(Calendar.DAY_OF_MONTH)
-        )
-        if (!currentDateIso.isNullOrBlank()) {
-            try {
-                val p = currentDateIso.split("-")
-                selectedJalali = JalaliDate.fromGregorian(p[0].toInt(), p[1].toInt(), p[2].toInt())
-                inputDate.setText(
-                    "%04d/%02d/%02d".format(selectedJalali.first, selectedJalali.second, selectedJalali.third)
-                )
-            } catch (e: Exception) {
-                inputDate.setText(currentDateIso)
-            }
-        }
+        // The date is edited as Gregorian (yyyy-MM-dd), the same format it is stored in.
+        // An empty value means the album has no date.
+        var selectedIso = currentDateIso.orEmpty()
+        inputDate.setText(selectedIso)
         inputDate.setOnClickListener {
-            JalaliDatePickerDialog(
+            val parts = selectedIso.split("-")
+            val start = Calendar.getInstance()
+            val y = parts.getOrNull(0)?.toIntOrNull() ?: start.get(Calendar.YEAR)
+            val m = (parts.getOrNull(1)?.toIntOrNull() ?: (start.get(Calendar.MONTH) + 1)) - 1
+            val d = parts.getOrNull(2)?.toIntOrNull() ?: start.get(Calendar.DAY_OF_MONTH)
+            DatePickerDialog(
                 this,
-                selectedJalali.first,
-                selectedJalali.second,
-                selectedJalali.third
-            ) { year, month, day ->
-                selectedJalali = Triple(year, month, day)
-                inputDate.setText("%04d/%02d/%02d".format(year, month, day))
-            }.show()
+                { _, year, month, day ->
+                    selectedIso = "%04d-%02d-%02d".format(year, month + 1, day)
+                    inputDate.setText(selectedIso)
+                },
+                y, m, d
+            ).show()
         }
 
         val dialog = AlertDialog.Builder(this).setView(view).create()
@@ -373,14 +363,12 @@ class FolderActivity : AppCompatActivity() {
                 tilName.error = getString(R.string.album_name_required)
                 return@setOnClickListener
             }
-            val dateText = inputDate.text.toString().trim()
-            val date = if (dateText.isEmpty()) "" else (JalaliDate.toIso(dateText) ?: dateText)
             val location = inputLocation.text.toString().trim()
             dialog.dismiss()
             val progress = Ui.progress(this, getString(R.string.loading))
             lifecycleScope.launch {
                 try {
-                    DriveRepo.updateFolder(this@FolderActivity, prefix, name, date, location)
+                    DriveRepo.updateFolder(this@FolderActivity, prefix, name, selectedIso, location)
                     Ui.toast(this@FolderActivity, getString(R.string.album_updated))
                     adapter.clearSelection()
                     load()
