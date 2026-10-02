@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -35,6 +36,7 @@ object DriveRepo {
     private const val ORDER_FILE = ".order"
     private const val INFO_DATE = "album-date"
     private const val INFO_LOCATION = "album-location"
+    private const val INFO_COMMENT_COUNT = "comment-count"
     private const val COMMENTS_DIR = ".comments"
     private val STAMP = Regex("^\\d{13}_")
 
@@ -147,17 +149,55 @@ object DriveRepo {
     suspend fun images(context: Context, folderId: String): List<DriveFile> =
         authed { s ->
             val files = listAll(s, folderId)
+            val counts = commentCounts(s, folderId)
             sortPhotos(files.filter(::isImage), orderFor(s, files, folderId + ORDER_FILE))
                 .map {
+                    val stored = (it.fileName ?: "").removePrefix(folderId)
+                    val display = stored.replaceFirst(STAMP, "")
                     DriveFile(
                         id = it.fileId,
-                        name = (it.fileName ?: "").removePrefix(folderId).replaceFirst(STAMP, ""),
-                        storedName = (it.fileName ?: "").removePrefix(folderId),
+                        name = display,
+                        storedName = stored,
                         mimeType = it.contentType,
-                        createdTime = iso(it.uploadTimestamp)
+                        createdTime = iso(it.uploadTimestamp),
+                        // New key first, then the legacy key (name without timestamp).
+                        commentCount = counts[stored] ?: counts[display] ?: 0
                     )
                 }
         }
+
+    /**
+     * Comment counts for one album, keyed by the comments key (stored name or legacy name).
+     * One listing call is enough because the count is saved as file info on each comments file.
+     * Old comments files without that info are downloaded once to count them.
+     */
+    private suspend fun commentCounts(s: B2Session, folderId: String): Map<String, Int> {
+        val prefix = folderId + COMMENTS_DIR + "/"
+        val files = try {
+            listAll(s, prefix, limit = 10_000, delimiter = null)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return emptyMap()
+        }
+        val out = HashMap<String, Int>()
+        for (f in files) {
+            val fileName = f.fileName ?: continue
+            if (f.action != "upload" || !fileName.endsWith(".json")) continue
+            val key = fileName.removePrefix(prefix).removeSuffix(".json")
+            val fromInfo = infoValue(f.fileInfo, INFO_COMMENT_COUNT)?.toIntOrNull()
+            val count = fromInfo ?: try {
+                val id = f.fileId
+                if (id == null) 0 else readComments(s, id).size
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                0
+            }
+            out[key] = count
+        }
+        return out
+    }
 
     suspend fun upload(context: Context, folderId: String, uri: Uri): DriveFile {
         val resolver: ContentResolver = context.applicationContext.contentResolver
@@ -416,7 +456,13 @@ object DriveRepo {
         val bytes = Gson().toJson(CommentsFile(comments)).toByteArray(Charsets.UTF_8)
         val previousId = listAll(s, fileName, limit = 10, delimiter = null)
             .firstOrNull { it.fileName == fileName }?.fileId
-        putFile(fileName, "application/json", bytes)
+        // The comment count is stored as file info so the photo list can show it without downloads.
+        putFile(
+            fileName,
+            "application/json",
+            bytes,
+            mapOf("X-Bz-Info-$INFO_COMMENT_COUNT" to comments.size.toString())
+        )
         if (previousId != null) {
             try {
                 api.deleteFileVersion(
