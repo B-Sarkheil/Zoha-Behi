@@ -1,15 +1,22 @@
 package com.behi.zoha
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.text.InputType
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -27,6 +34,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 class ViewerActivity : AppCompatActivity() {
 
@@ -35,6 +43,8 @@ class ViewerActivity : AppCompatActivity() {
         const val EXTRA_FILE_NAME = "file_name"
         const val EXTRA_STORED_NAME = "stored_name"
         const val EXTRA_FOLDER_ID = "folder_id"
+        private const val PREFS = "zoha_prefs"
+        private const val KEY_AUTHOR = "author_name"
     }
 
     private lateinit var fileId: String
@@ -82,7 +92,7 @@ class ViewerActivity : AppCompatActivity() {
         commentsEmpty = findViewById(R.id.commentsEmpty)
         sendButton = findViewById(R.id.btnSendComment)
         commentsRecycler = findViewById(R.id.commentsRecycler)
-        adapter = CommentAdapter(comments) { index -> deleteComment(index) }
+        adapter = CommentAdapter(comments) { id -> deleteComment(id) }
         commentsRecycler.layoutManager = LinearLayoutManager(this)
         commentsRecycler.adapter = adapter
         renderComments()
@@ -99,6 +109,56 @@ class ViewerActivity : AppCompatActivity() {
             }
             showImage(image, progress)
             loadComments()
+        }
+    }
+
+    // ---- Comment author (name is stored per phone) ----
+
+    private fun authorName(): String? =
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_AUTHOR, null)
+            ?.takeIf { it.isNotBlank() }
+
+    /** Asks for the name shown on this phone's comments; [onDone] runs after it was saved. */
+    private fun promptAuthorName(onDone: (() -> Unit)? = null) {
+        val edit = EditText(this).apply {
+            hint = getString(R.string.your_name_hint)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            maxLines = 1
+            setText(authorName().orEmpty())
+            setSelection(text.length)
+        }
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val container = FrameLayout(this).apply {
+            setPadding(pad, pad / 2, pad, 0)
+            addView(edit)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.name_dialog_title)
+            .setView(container)
+            .setPositiveButton(R.string.save) { _, _ ->
+                val name = edit.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                        .edit().putString(KEY_AUTHOR, name).apply()
+                    onDone?.invoke()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_viewer, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return if (item.itemId == R.id.action_change_name) {
+            promptAuthorName()
+            true
+        } else {
+            super.onOptionsItemSelected(item)
         }
     }
 
@@ -137,10 +197,16 @@ class ViewerActivity : AppCompatActivity() {
     private fun addComment(input: TextInputEditText) {
         val text = input.text?.toString()?.trim().orEmpty()
         if (text.isEmpty()) return
+        val author = authorName()
+        if (author == null) {
+            // First comment on this phone: ask for a name, then send.
+            promptAuthorName { addComment(input) }
+            return
+        }
         sendButton.isEnabled = false
         lifecycleScope.launch {
             try {
-                comments = DriveRepo.addComment(folderId, storedName, Comment(text = text), fileName)
+                comments = DriveRepo.addComment(folderId, storedName, Comment(text = text, author = author, id = UUID.randomUUID().toString()), fileName)
                 // Clear the input only after the comment was really saved.
                 input.text?.clear()
                 renderComments()
@@ -155,10 +221,10 @@ class ViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun deleteComment(index: Int) {
+    private fun deleteComment(commentId: String) {
         lifecycleScope.launch {
             try {
-                comments = DriveRepo.deleteComment(folderId, storedName, index, fileName)
+                comments = DriveRepo.deleteComment(folderId, storedName, commentId, fileName)
                 renderComments()
             } catch (e: CancellationException) {
                 throw e
@@ -228,7 +294,7 @@ class ViewerActivity : AppCompatActivity() {
 
     private class CommentAdapter(
         private var comments: List<Comment>,
-        private val onDelete: (Int) -> Unit
+        private val onDelete: (String) -> Unit
     ) : RecyclerView.Adapter<CommentAdapter.VH>() {
 
         fun updateComments(newComments: List<Comment>) {
@@ -253,13 +319,14 @@ class ViewerActivity : AppCompatActivity() {
                 // Use the live adapter position, not the one captured at bind time.
                 val pos = holder.bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setOnLongClickListener false
+                val commentId = comments.getOrNull(pos)?.id ?: return@setOnLongClickListener false
                 val ctx = holder.itemView.context
                 Ui.confirm(
                     ctx,
                     ctx.getString(R.string.delete_comment_title),
                     ctx.getString(R.string.delete_comment_message),
                     ctx.getString(R.string.delete)
-                ) { onDelete(pos) }
+                ) { onDelete(commentId) }
                 true
             }
         }

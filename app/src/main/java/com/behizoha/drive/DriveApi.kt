@@ -24,13 +24,25 @@ data class DriveFile(
 
 /** Comment on an image. */
 data class Comment(
-    val text: String,
+    val text: String = "",
     val timestamp: Long = System.currentTimeMillis(),
-    val author: String = "You"
+    val author: String = "You",
+    // Unique id so a comment can be deleted safely even if the list changed on the other phone.
+    val id: String = ""
 ) {
+    /** Jalali date with year and time, consistent with the rest of the app. */
     fun displayTime(): String {
-        val fmt = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault())
-        return fmt.format(java.util.Date(timestamp))
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
+        val (jy, jm, jd) = com.behi.zoha.JalaliDate.fromGregorian(
+            cal.get(java.util.Calendar.YEAR),
+            cal.get(java.util.Calendar.MONTH) + 1,
+            cal.get(java.util.Calendar.DAY_OF_MONTH)
+        )
+        return "%04d/%02d/%02d %02d:%02d".format(
+            jy, jm, jd,
+            cal.get(java.util.Calendar.HOUR_OF_DAY),
+            cal.get(java.util.Calendar.MINUTE)
+        )
     }
 }
 
