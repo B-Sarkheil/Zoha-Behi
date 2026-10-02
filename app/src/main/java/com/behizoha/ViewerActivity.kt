@@ -25,6 +25,7 @@ import com.bumptech.glide.request.target.Target
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class ViewerActivity : AppCompatActivity() {
@@ -32,44 +33,62 @@ class ViewerActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_FILE_ID = "file_id"
         const val EXTRA_FILE_NAME = "file_name"
+        const val EXTRA_STORED_NAME = "stored_name"
         const val EXTRA_FOLDER_ID = "folder_id"
     }
 
     private lateinit var fileId: String
+
+    // Display name; also the legacy comments key (name without timestamp).
     private lateinit var fileName: String
+
+    // Full stored name without the album prefix; the unique comments key.
+    private lateinit var storedName: String
     private lateinit var folderId: String
+
     private var comments: List<Comment> = emptyList()
     private lateinit var adapter: CommentAdapter
+    private lateinit var behavior: BottomSheetBehavior<View>
+    private lateinit var commentsRecycler: RecyclerView
+    private lateinit var commentsTitle: TextView
+    private lateinit var commentsEmpty: TextView
+    private lateinit var sendButton: MaterialButton
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_viewer)
         fileId = intent.getStringExtra(EXTRA_FILE_ID) ?: ""
         fileName = intent.getStringExtra(EXTRA_FILE_NAME) ?: getString(R.string.untitled)
+        storedName = intent.getStringExtra(EXTRA_STORED_NAME)?.takeIf { it.isNotEmpty() } ?: fileName
         folderId = intent.getStringExtra(EXTRA_FOLDER_ID) ?: ""
         title = fileName
 
         val image = findViewById<ImageView>(R.id.image)
         val progress = findViewById<ProgressBar>(R.id.progress)
 
-        val bottomSheet = findViewById<View>(R.id.bottomSheet)
-        val behavior = BottomSheetBehavior.from(bottomSheet)
-        behavior.peekHeight = 0
+        // The sheet stays collapsed to its header (peek height set in the layout); tap the header to open.
+        behavior = BottomSheetBehavior.from(findViewById<View>(R.id.bottomSheet))
         behavior.state = BottomSheetBehavior.STATE_COLLAPSED
+        findViewById<View>(R.id.commentsHeader).setOnClickListener {
+            behavior.state =
+                if (behavior.state == BottomSheetBehavior.STATE_EXPANDED) {
+                    BottomSheetBehavior.STATE_COLLAPSED
+                } else {
+                    BottomSheetBehavior.STATE_EXPANDED
+                }
+        }
 
-        val commentsRecycler = findViewById<RecyclerView>(R.id.commentsRecycler)
+        commentsTitle = findViewById(R.id.commentsTitle)
+        commentsEmpty = findViewById(R.id.commentsEmpty)
+        sendButton = findViewById(R.id.btnSendComment)
+        commentsRecycler = findViewById(R.id.commentsRecycler)
         adapter = CommentAdapter(comments) { index -> deleteComment(index) }
         commentsRecycler.layoutManager = LinearLayoutManager(this)
         commentsRecycler.adapter = adapter
+        renderComments()
 
         val commentInput = findViewById<TextInputEditText>(R.id.commentInput)
-        findViewById<MaterialButton>(R.id.btnSendComment).setOnClickListener {
-            val text = commentInput.text?.toString()?.trim()
-            if (text != null && text.isNotEmpty()) {
-                addComment(text)
-                commentInput.text?.clear()
-            }
-        }
+        sendButton.setOnClickListener { addComment(commentInput) }
 
         findViewById<MaterialButton>(R.id.btnDelete).setOnClickListener { confirmDelete() }
 
@@ -83,29 +102,69 @@ class ViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadComments() {
-        lifecycleScope.launch {
-            comments = DriveRepo.loadComments(folderId, fileName)
-            adapter.updateComments(comments)
+    // Back collapses the comments sheet first, then closes the screen.
+    override fun onBackPressed() {
+        if (behavior.state == BottomSheetBehavior.STATE_EXPANDED) {
+            behavior.state = BottomSheetBehavior.STATE_COLLAPSED
+        } else {
+            super.onBackPressed()
         }
     }
 
-    private fun addComment(text: String) {
-        val comment = Comment(text = text)
+    private fun renderComments() {
+        adapter.updateComments(comments)
+        commentsTitle.text = getString(R.string.comments_with_count, comments.size)
+        commentsEmpty.visibility = if (comments.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private fun reportError(resId: Int, e: Exception) {
+        Ui.toast(this, getString(resId, e.message ?: e.javaClass.simpleName))
+    }
+
+    private fun loadComments() {
         lifecycleScope.launch {
-            comments = DriveRepo.addComment(folderId, fileName, comment)
-            adapter.updateComments(comments)
-            // Expand bottom sheet to show new comment
-            val bottomSheet = findViewById<View>(R.id.bottomSheet)
-            val behavior = BottomSheetBehavior.from(bottomSheet)
-            behavior.state = BottomSheetBehavior.STATE_EXPANDED
+            try {
+                comments = DriveRepo.loadComments(folderId, storedName, fileName)
+                renderComments()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                reportError(R.string.comments_load_failed, e)
+            }
+        }
+    }
+
+    private fun addComment(input: TextInputEditText) {
+        val text = input.text?.toString()?.trim().orEmpty()
+        if (text.isEmpty()) return
+        sendButton.isEnabled = false
+        lifecycleScope.launch {
+            try {
+                comments = DriveRepo.addComment(folderId, storedName, Comment(text = text), fileName)
+                // Clear the input only after the comment was really saved.
+                input.text?.clear()
+                renderComments()
+                commentsRecycler.scrollToPosition(comments.size - 1)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                reportError(R.string.comment_send_failed, e)
+            } finally {
+                sendButton.isEnabled = true
+            }
         }
     }
 
     private fun deleteComment(index: Int) {
         lifecycleScope.launch {
-            comments = DriveRepo.deleteComment(folderId, fileName, index)
-            adapter.updateComments(comments)
+            try {
+                comments = DriveRepo.deleteComment(folderId, storedName, index, fileName)
+                renderComments()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                reportError(R.string.comment_delete_failed, e)
+            }
         }
     }
 
@@ -191,12 +250,16 @@ class ViewerActivity : AppCompatActivity() {
             holder.text.text = comment.text
             holder.time.text = comment.displayTime()
             holder.itemView.setOnLongClickListener {
+                // Use the live adapter position, not the one captured at bind time.
+                val pos = holder.bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION) return@setOnLongClickListener false
+                val ctx = holder.itemView.context
                 Ui.confirm(
-                    holder.itemView.context,
-                    "Delete comment?",
-                    "This comment will be permanently deleted.",
-                    "Delete"
-                ) { onDelete(position) }
+                    ctx,
+                    ctx.getString(R.string.delete_comment_title),
+                    ctx.getString(R.string.delete_comment_message),
+                    ctx.getString(R.string.delete)
+                ) { onDelete(pos) }
                 true
             }
         }
