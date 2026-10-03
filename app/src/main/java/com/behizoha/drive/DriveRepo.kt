@@ -220,6 +220,18 @@ object DriveRepo {
         val clean = name.trim().replace("/", "-")
         if (clean.isEmpty()) return
         putFile("$clean/$PLACEHOLDER", "application/octet-stream", ByteArray(0), infoHeaders(date, location))
+
+        // Put the new album at the top of the saved album order (best effort).
+        val prefix = "$clean/"
+        try {
+            val currentIds = folders(context).mapNotNull { it.id }
+            val newOrder = listOf(prefix) + currentIds.filter { it != prefix }
+            saveFolderOrder(context, newOrder)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (ignored: Exception) {
+            // If saving the order fails, the album is still created and appears at the end.
+        }
     }
 
     /** Builds the B2 file-info headers for the album date/location (blank values are skipped). */
