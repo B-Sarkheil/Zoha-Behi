@@ -229,7 +229,7 @@ class FolderAdapter(
         // Smaller line under the album name: date and location (both optional).
         val parts = listOfNotNull(
             row.date?.let { "📅 " + formatDate(it) },
-            row.location?.takeIf { it.isNotBlank() }?.let { "📍 $it" }
+            row.location?.takeIf { it.isNotBlank() }?.let { "📌 $it" }
         )
         if (parts.isEmpty()) {
             holder.meta.visibility = View.GONE
