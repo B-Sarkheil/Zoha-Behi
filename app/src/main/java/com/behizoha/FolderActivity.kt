@@ -22,6 +22,9 @@ import com.google.android.material.textfield.TextInputLayout
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import android.app.DatePickerDialog
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.RelativeSizeSpan
 
 class FolderActivity : AppCompatActivity() {
 
@@ -92,7 +95,19 @@ class FolderActivity : AppCompatActivity() {
         "?"
     }
 
-    private fun appTitle(): String = getString(R.string.app_name) + " - ver." + versionName()
+    private fun appTitle(): CharSequence {
+        val name = getString(R.string.app_name)
+        val full = name + " ver." + versionName()
+        return SpannableString(full).apply {
+            // Make the "ver.x.y" part smaller than the app name.
+            setSpan(
+                RelativeSizeSpan(0.6f),
+                name.length,
+                full.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+    }
 
     private suspend fun load() {
         swipe.isRefreshing = true

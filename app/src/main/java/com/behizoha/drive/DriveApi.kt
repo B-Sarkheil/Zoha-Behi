@@ -9,6 +9,8 @@ import retrofit2.http.Header
 import retrofit2.http.HeaderMap
 import retrofit2.http.POST
 import retrofit2.http.Url
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 // UI-facing model (kept so adapters/activities do not change).
 // For folders: id = prefix such as "Trip/", name = "Trip".
@@ -168,9 +170,20 @@ interface DriveApi {
 }
 
 internal object B2Http {
+    val client: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(300, TimeUnit.SECONDS)
+            .callTimeout(0, TimeUnit.SECONDS) // no overall limit
+            .retryOnConnectionFailure(true)
+            .build()
+    }
+
     val api: DriveApi by lazy {
         Retrofit.Builder()
             .baseUrl("https://api.backblazeb2.com/")
+            .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(DriveApi::class.java)

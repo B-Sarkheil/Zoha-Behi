@@ -41,7 +41,7 @@ object DriveRepo {
     private val STAMP = Regex("^\\d{13}_")
 
     private val api: DriveApi get() = B2Http.api
-    private val http = OkHttpClient()
+    private val http get() = B2Http.client
 
     fun mediaUrl(fileId: String): String {
         val base = TokenManager.downloadUrl() ?: ""
@@ -562,20 +562,32 @@ object DriveRepo {
         mime: String,
         bytes: ByteArray,
         extraHeaders: Map<String, String> = emptyMap()
-    ): B2File =
-        authed { s ->
-            val target = api.getUploadUrl(
-                s.apiUrl + "/b2api/v2/b2_get_upload_url", s.token, UploadUrlRequest(s.bucketId)
-            )
-            api.upload(
-                target.uploadUrl ?: throw IllegalStateException("No upload url"),
-                target.authorizationToken ?: throw IllegalStateException("No upload token"),
-                encodeName(fileName),
-                "do_not_verify",
-                extraHeaders,
-                bytes.toRequestBody(mime.toMediaTypeOrNull())
-            )
+    ): B2File {
+        var lastError: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                return authed { s ->
+                    val target = api.getUploadUrl(
+                        s.apiUrl + "/b2api/v2/b2_get_upload_url", s.token, UploadUrlRequest(s.bucketId)
+                    )
+                    api.upload(
+                        target.uploadUrl ?: throw IllegalStateException("No upload url"),
+                        target.authorizationToken ?: throw IllegalStateException("No upload token"),
+                        encodeName(fileName),
+                        "do_not_verify",
+                        extraHeaders,
+                        bytes.toRequestBody(mime.toMediaTypeOrNull())
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: java.io.IOException) {
+                lastError = e
+                kotlinx.coroutines.delay(1000L * (attempt + 1))
+            }
         }
+        throw lastError ?: java.io.IOException("Upload failed")
+    }
 
     private suspend fun listAll(
         s: B2Session,
