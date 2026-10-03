@@ -95,3 +95,10 @@ google-services.json
 # ================================
 
 node_modules/
+
+
+# ================================
+# BackBlaze B2 key
+# ================================
+
+app/src/main/java/com/behizoha/drive/B2Config.kt
