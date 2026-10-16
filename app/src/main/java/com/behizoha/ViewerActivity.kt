@@ -61,7 +61,6 @@ class ViewerActivity : AppCompatActivity() {
     // Full stored name without the album prefix; the unique comments key.
     private lateinit var storedName: String
     private lateinit var folderId: String
-
     private var comments: List<Comment> = emptyList()
     private lateinit var adapter: CommentAdapter
     private lateinit var behavior: BottomSheetBehavior<View>
@@ -69,12 +68,12 @@ class ViewerActivity : AppCompatActivity() {
     private lateinit var commentsTitle: TextView
     private lateinit var commentsEmpty: TextView
     private lateinit var sendButton: MaterialButton
-    private lateinit var image: ImageView
     private lateinit var progress: ProgressBar
     private var ids: List<String> = emptyList()
     private var names: List<String> = emptyList()
     private var storedNames: List<String> = emptyList()
     private var index = 0
+    private lateinit var image: ZoomImageView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,20 +92,8 @@ class ViewerActivity : AppCompatActivity() {
         storedNames = intent.getStringArrayListExtra(EXTRA_STORED_NAMES) ?: arrayListOf(storedName)
         index = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, ids.size - 1)
 
-        // Swipe left = next photo, swipe right = previous photo.
-        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: MotionEvent): Boolean = true
-
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
-                if (e1 == null) return false
-                val dx = e2.x - e1.x
-                val dy = e2.y - e1.y
-                if (Math.abs(dx) < 120 || Math.abs(dx) < Math.abs(dy)) return false
-                showAt(if (dx < 0) index + 1 else index - 1)
-                return true
-            }
-        })
-        image.setOnTouchListener { _, ev -> detector.onTouchEvent(ev) }
+        // Swipe (only when not zoomed): +1 = next photo, -1 = previous photo.
+        image.onSwipe = { step -> showAt(index + step) }
 
         // The sheet stays collapsed to its header (peek height set in the layout); tap the header to open.
         behavior = BottomSheetBehavior.from(findViewById<View>(R.id.bottomSheet))
@@ -299,6 +286,7 @@ class ViewerActivity : AppCompatActivity() {
     private fun showImage(image: ImageView, progress: ProgressBar) {
         Glide.with(this)
             .load(AuthImageLoader.model(fileId))
+            .override(2400, 2400)
             .listener(object : RequestListener<Drawable> {
                 override fun onLoadFailed(
                     e: GlideException?,

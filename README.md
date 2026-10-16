@@ -183,7 +183,7 @@ keyPassword=<your-key-password>
 ## Changelog
 
 - **1.6** - Swipe left/right between pictures in the viewer, Delete moved from a button to
-  the viewer menu (three dots)
+  the viewer menu (three dots), Image zoom
 - **1.5** - New albums are added at the top of the list, smaller version label in the title
   (`Zoha&Behi ver.x.y`), longer network timeouts and upload retry (up to 3 attempts) for
   unstable mobile data, more readable album card text (darker gradient, bold white text),
