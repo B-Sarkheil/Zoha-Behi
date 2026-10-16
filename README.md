@@ -188,7 +188,8 @@ keyPassword=<your-key-password>
 
 - **1.6** - Swipe left/right between pictures in the viewer, delete moved from a button to
   the viewer menu (three dots), zoom in the picture viewer (pinch-zoom, double-tap zoom and
-  panning), select all in image list page, hide comment page by clicking on picture, 
+  panning), select all in image list page, hide comment page by clicking on picture, prevent 
+  sleep while uploading, WakeLock and WifiLock, retry for faild uploads
 - **1.5** - New albums are added at the top of the list, smaller version label in the title
   (`Zoha&Behi ver.x.y`), longer network timeouts and upload retry (up to 3 attempts) for
   unstable mobile data, more readable album card text (darker gradient, bold white text),
