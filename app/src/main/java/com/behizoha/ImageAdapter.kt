@@ -50,6 +50,16 @@ class ImageAdapter(
         onSelectionChanged(0)
     }
 
+    /** Selects every picture and switches to selection mode. */
+    fun selectAll() {
+        if (items.isEmpty()) return
+        selected.clear()
+        items.forEach { it.id?.let { id -> selected.add(id) } }
+        selectionMode = true
+        notifyDataSetChanged()
+        onSelectionChanged(selected.size)
+    }
+
     // ---- Reorder mode ----
 
     fun startReorder() {

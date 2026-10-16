@@ -18,6 +18,11 @@
         android:showAsAction="ifRoom" />
 
     <item
+        android:id="@+id/action_select_all"
+        android:title="@string/select_all"
+        android:showAsAction="never" />
+
+    <item
         android:id="@+id/action_reorder"
         android:title="@string/reorder"
         android:showAsAction="never" />

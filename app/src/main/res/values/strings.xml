@@ -54,4 +54,5 @@
     <string name="edit">Edit</string>
     <string name="edit_album">Edit album</string>
     <string name="album_updated">Album updated</string>
+    <string name="select_all">Select all</string>
 </resources>

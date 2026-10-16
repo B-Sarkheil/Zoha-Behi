@@ -15,8 +15,9 @@ The title bar shows the app name followed by a smaller version label, e.g. `Zoha
   optional location. A new album is placed at the **top** of the list
 - **Edit album** - change name, date and location (select one album -> Edit)
 - Picture list with thumbnails (oldest first until you reorder)
-- Full-screen picture viewer: **swipe left/right** to move between the pictures of the album.
-  Delete is in the viewer menu (three dots)
+- Full-screen picture viewer: **pinch to zoom** (up to 5x), **double-tap** to zoom in/out,
+  drag to pan while zoomed, and **swipe left/right** to move between the pictures of the
+  album (swipe works when the picture is not zoomed). Delete is in the viewer menu (three dots)
 - **Add pictures** - FAB, pick one or many from the device (uploaded to B2)
 - **Delete** - long-press to multi-select, then delete. Deleting an album deletes all of
   its pictures
@@ -107,8 +108,9 @@ uses `@mipmap/ic_launcher`.
 
 1. Launch the app. The album list loads from your bucket.
 2. Menu -> **New album** to create an album (name, date, location). It appears at the top.
-3. Tap an album to see its pictures; tap a picture to view it full-screen. Swipe left or
-   right to see the next or previous picture.
+3. Tap an album to see its pictures; tap a picture to view it full-screen. Pinch with two
+   fingers or double-tap to zoom, drag to move the zoomed picture. When not zoomed, swipe
+   left or right to see the next or previous picture.
 4. Tap the **+** button to upload pictures.
    In the full-screen viewer, tap the **Comments** bar to read and add comments.
 5. Long-press items to multi-select and delete. Select one album and tap **Edit** to change
@@ -128,6 +130,7 @@ app/src/main/java/com/behi/zoha/
 ├── ImageListActivity.kt      # picture list, upload, multi-select delete, picture reorder
 ├── ImageAdapter.kt
 ├── ViewerActivity.kt         # full-screen viewer + delete + comments sheet
+├── ZoomImageView.kt          # ImageView with pinch-zoom, double-tap zoom, panning and swipe callback
 ├── AuthImageLoader.kt        # Glide loading with the B2 authorization header
 ├── JalaliDate.kt             # Gregorian <-> Jalali conversion and formatting
 ├── JalaliDatePickerDialog.kt # Jalali date picker (currently unused; dialogs use the Gregorian picker)
@@ -143,6 +146,7 @@ app/src/main/java/com/behi/zoha/
 
 - Lists load up to 5 000 files per album; album covers and counts load per visible row.
 - Thumbnails are loaded by downloading the full picture (Glide caches it locally).
+- The viewer loads pictures at up to 2400x2400 px so zoomed pictures stay sharp.
 - Each upload reads the whole picture into memory, so very large files may be slow.
 - Network timeouts: connect 30 s, read 120 s, write 300 s, no overall call limit.
   Each file is tried up to 3 times (1 s and 2 s pause between attempts) on network errors.
@@ -182,8 +186,9 @@ keyPassword=<your-key-password>
 
 ## Changelog
 
-- **1.6** - Swipe left/right between pictures in the viewer, Delete moved from a button to
-  the viewer menu (three dots), Image zoom
+- **1.6** - Swipe left/right between pictures in the viewer, delete moved from a button to
+  the viewer menu (three dots), zoom in the picture viewer (pinch-zoom, double-tap zoom and
+  panning), select all in image list page, hide comment page by clicking on picture, 
 - **1.5** - New albums are added at the top of the list, smaller version label in the title
   (`Zoha&Behi ver.x.y`), longer network timeouts and upload retry (up to 3 attempts) for
   unstable mobile data, more readable album card text (darker gradient, bold white text),

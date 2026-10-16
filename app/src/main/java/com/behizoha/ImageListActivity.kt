@@ -286,6 +286,10 @@ class ImageListActivity : AppCompatActivity() {
         menu.findItem(R.id.action_delete)?.isVisible =
             !reordering && adapter.selectionMode && adapter.selectedIds.isNotEmpty()
         menu.findItem(R.id.action_refresh)?.isVisible = !reordering
+        // Show "Select all" only when some pictures are still unselected.
+        menu.findItem(R.id.action_select_all)?.isVisible =
+            !reordering && adapter.itemCount > 0 &&
+                    adapter.selectedIds.size < adapter.itemCount
         menu.findItem(R.id.action_reorder)?.isVisible = !reordering && adapter.itemCount > 1
         menu.findItem(R.id.action_save_order)?.isVisible = reordering
         menu.findItem(R.id.action_cancel_order)?.isVisible = reordering
@@ -298,10 +302,15 @@ class ImageListActivity : AppCompatActivity() {
                 deleteSelected()
                 true
             }
+            R.id.action_select_all -> {
+                adapter.selectAll()
+                true
+            }
             R.id.action_refresh -> {
                 lifecycleScope.launch { load() }
                 true
             }
+
             R.id.action_reorder -> {
                 startReorder()
                 true
