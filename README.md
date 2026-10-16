@@ -4,7 +4,7 @@ An Android app (Kotlin) for a private shared photo album. Pictures are stored in
 **Backblaze B2** bucket. You can browse albums, view pictures full-screen, upload new
 pictures, delete them, comment on them and reorder both albums and pictures.
 
-The title bar shows the app name followed by a smaller version label, e.g. `Zoha&Behi ver.1.5`.
+The title bar shows the app name followed by a smaller version label, e.g. `Zoha&Behi ver.1.6`.
 
 ## Features
 
@@ -15,7 +15,8 @@ The title bar shows the app name followed by a smaller version label, e.g. `Zoha
   optional location. A new album is placed at the **top** of the list
 - **Edit album** - change name, date and location (select one album -> Edit)
 - Picture list with thumbnails (oldest first until you reorder)
-- Full-screen picture viewer with delete button
+- Full-screen picture viewer: **swipe left/right** to move between the pictures of the album.
+  Delete is in the viewer menu (three dots)
 - **Add pictures** - FAB, pick one or many from the device (uploaded to B2)
 - **Delete** - long-press to multi-select, then delete. Deleting an album deletes all of
   its pictures
@@ -92,8 +93,8 @@ Notes for this machine:
 The version is managed in one place, `app/build.gradle`:
 
 ```groovy
-versionCode 5        // must increase with every release
-versionName '1.5'    // shown in the title as "Zoha&Behi ver.1.5" (smaller text)
+versionCode 6        // must increase with every release
+versionName '1.6'    // shown in the title as "Zoha&Behi ver.1.6" (smaller text)
 ```
 
 ## App icon
@@ -106,12 +107,14 @@ uses `@mipmap/ic_launcher`.
 
 1. Launch the app. The album list loads from your bucket.
 2. Menu -> **New album** to create an album (name, date, location). It appears at the top.
-3. Tap an album to see its pictures; tap a picture to view it full-screen.
+3. Tap an album to see its pictures; tap a picture to view it full-screen. Swipe left or
+   right to see the next or previous picture.
 4. Tap the **+** button to upload pictures.
    In the full-screen viewer, tap the **Comments** bar to read and add comments.
 5. Long-press items to multi-select and delete. Select one album and tap **Edit** to change
    its name, date or location. In the comments sheet, long-press a comment to delete it.
    Menu -> **Change my name** changes the author name used on this phone.
+   To delete the picture you are viewing, use the viewer menu (three dots) -> **Delete**.
 6. Menu -> **Reorder** to change the order of albums (album list) or pictures (inside an
    album). Drag, then **Save**. **Cancel** or Back discards the changes.
 
@@ -179,6 +182,8 @@ keyPassword=<your-key-password>
 
 ## Changelog
 
+- **1.6** - Swipe left/right between pictures in the viewer, Delete moved from a button to
+  the viewer menu (three dots)
 - **1.5** - New albums are added at the top of the list, smaller version label in the title
   (`Zoha&Behi ver.x.y`), longer network timeouts and upload retry (up to 3 attempts) for
   unstable mobile data, more readable album card text (darker gradient, bold white text),

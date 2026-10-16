@@ -170,12 +170,22 @@ class ImageListActivity : AppCompatActivity() {
     }
 
     private fun openViewer(file: DriveFile) {
+        val items = adapter.items
+        val index = items.indexOfFirst { it.id == file.id }.coerceAtLeast(0)
         startActivityForResult(
             Intent(this, ViewerActivity::class.java)
                 .putExtra(ViewerActivity.EXTRA_FILE_ID, file.id)
                 .putExtra(ViewerActivity.EXTRA_FILE_NAME, file.name ?: getString(R.string.untitled))
                 .putExtra(ViewerActivity.EXTRA_FOLDER_ID, folderId)
-                .putExtra(ViewerActivity.EXTRA_STORED_NAME, file.storedName ?: file.name ?: ""),
+                .putExtra(ViewerActivity.EXTRA_STORED_NAME, file.storedName ?: file.name ?: "")
+                // The whole album list, so the viewer can switch between photos.
+                .putStringArrayListExtra(ViewerActivity.EXTRA_IDS, ArrayList(items.map { it.id ?: "" }))
+                .putStringArrayListExtra(ViewerActivity.EXTRA_NAMES, ArrayList(items.map { it.name ?: "" }))
+                .putStringArrayListExtra(
+                    ViewerActivity.EXTRA_STORED_NAMES,
+                    ArrayList(items.map { it.storedName ?: it.name ?: "" })
+                )
+                .putExtra(ViewerActivity.EXTRA_INDEX, index),
             RC_VIEWER
         )
     }

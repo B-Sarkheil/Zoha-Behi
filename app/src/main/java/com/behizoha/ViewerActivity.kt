@@ -35,6 +35,8 @@ import com.google.android.material.textfield.TextInputEditText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.UUID
+import android.view.GestureDetector
+import android.view.MotionEvent
 
 class ViewerActivity : AppCompatActivity() {
 
@@ -45,6 +47,10 @@ class ViewerActivity : AppCompatActivity() {
         const val EXTRA_FOLDER_ID = "folder_id"
         private const val PREFS = "zoha_prefs"
         private const val KEY_AUTHOR = "author_name"
+        const val EXTRA_IDS = "ids"
+        const val EXTRA_NAMES = "names"
+        const val EXTRA_STORED_NAMES = "stored_names"
+        const val EXTRA_INDEX = "index"
     }
 
     private lateinit var fileId: String
@@ -63,6 +69,12 @@ class ViewerActivity : AppCompatActivity() {
     private lateinit var commentsTitle: TextView
     private lateinit var commentsEmpty: TextView
     private lateinit var sendButton: MaterialButton
+    private lateinit var image: ImageView
+    private lateinit var progress: ProgressBar
+    private var ids: List<String> = emptyList()
+    private var names: List<String> = emptyList()
+    private var storedNames: List<String> = emptyList()
+    private var index = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,8 +85,28 @@ class ViewerActivity : AppCompatActivity() {
         folderId = intent.getStringExtra(EXTRA_FOLDER_ID) ?: ""
         title = fileName
 
-        val image = findViewById<ImageView>(R.id.image)
-        val progress = findViewById<ProgressBar>(R.id.progress)
+        image = findViewById(R.id.image)
+        progress = findViewById(R.id.progress)
+
+        ids = intent.getStringArrayListExtra(EXTRA_IDS) ?: arrayListOf(fileId)
+        names = intent.getStringArrayListExtra(EXTRA_NAMES) ?: arrayListOf(fileName)
+        storedNames = intent.getStringArrayListExtra(EXTRA_STORED_NAMES) ?: arrayListOf(storedName)
+        index = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, ids.size - 1)
+
+        // Swipe left = next photo, swipe right = previous photo.
+        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
+                if (e1 == null) return false
+                val dx = e2.x - e1.x
+                val dy = e2.y - e1.y
+                if (Math.abs(dx) < 120 || Math.abs(dx) < Math.abs(dy)) return false
+                showAt(if (dx < 0) index + 1 else index - 1)
+                return true
+            }
+        })
+        image.setOnTouchListener { _, ev -> detector.onTouchEvent(ev) }
 
         // The sheet stays collapsed to its header (peek height set in the layout); tap the header to open.
         behavior = BottomSheetBehavior.from(findViewById<View>(R.id.bottomSheet))
@@ -99,8 +131,6 @@ class ViewerActivity : AppCompatActivity() {
 
         val commentInput = findViewById<TextInputEditText>(R.id.commentInput)
         sendButton.setOnClickListener { addComment(commentInput) }
-
-        findViewById<MaterialButton>(R.id.btnDelete).setOnClickListener { confirmDelete() }
 
         lifecycleScope.launch {
             try {
@@ -154,11 +184,16 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return if (item.itemId == R.id.action_change_name) {
-            promptAuthorName()
-            true
-        } else {
-            super.onOptionsItemSelected(item)
+        return when (item.itemId) {
+            R.id.action_change_name -> {
+                promptAuthorName()
+                true
+            }
+            R.id.action_delete -> {
+                confirmDelete()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
     }
 
@@ -182,10 +217,15 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun loadComments() {
+        val requestedKey = storedName
         lifecycleScope.launch {
             try {
-                comments = DriveRepo.loadComments(folderId, storedName, fileName)
-                renderComments()
+                val loaded = DriveRepo.loadComments(folderId, requestedKey, fileName)
+                // Ignore the result if the user already moved to another photo.
+                if (requestedKey == storedName) {
+                    comments = loaded
+                    renderComments()
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -238,6 +278,22 @@ class ViewerActivity : AppCompatActivity() {
     override fun onSupportNavigateUp(): Boolean {
         finish()
         return true
+    }
+
+    /** Switches to another photo of the album; ignored at the first/last photo. */
+    private fun showAt(newIndex: Int) {
+        if (newIndex !in ids.indices || newIndex == index) return
+        index = newIndex
+        fileId = ids[index]
+        fileName = names[index].ifEmpty { getString(R.string.untitled) }
+        storedName = storedNames[index].ifEmpty { fileName }
+        title = fileName
+
+        comments = emptyList()
+        renderComments()
+        progress.visibility = View.VISIBLE
+        showImage(image, progress)
+        loadComments()
     }
 
     private fun showImage(image: ImageView, progress: ProgressBar) {
