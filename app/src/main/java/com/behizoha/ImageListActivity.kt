@@ -21,6 +21,11 @@ import com.behi.zoha.drive.DriveRepo
 import com.behi.zoha.drive.TokenManager
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import kotlinx.coroutines.launch
+import android.content.Context
+import android.net.wifi.WifiManager
+import android.os.PowerManager
+import android.view.WindowManager
+import kotlinx.coroutines.CancellationException
 
 class ImageListActivity : AppCompatActivity() {
 
@@ -222,31 +227,52 @@ class ImageListActivity : AppCompatActivity() {
 
     private fun upload(uris: List<Uri>) {
         val progress = Ui.progress(this, getString(R.string.uploading, 1, uris.size))
+
+        // Keep the screen on and the CPU/Wi-Fi awake so a long upload is not interrupted by sleep.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "zoha:upload")
+            .apply { setReferenceCounted(false); acquire(2 * 60 * 60 * 1000L) }
+        val wifiLock = (applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager)
+            .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "zoha:upload")
+            .apply { setReferenceCounted(false); acquire() }
+
         lifecycleScope.launch {
             var ok = 0
-            var failed = 0
+            var pending: List<Uri> = uris
             try {
-                for ((index, uri) in uris.withIndex()) {
-                    progress.setMessage(getString(R.string.uploading, index + 1, uris.size))
-                    try {
-                        DriveRepo.upload(this@ImageListActivity, folderId, uri)
-                        ok++
-                    } catch (e: Exception) {
-                        failed++
+                // Two passes: the second pass retries the files that failed in the first one.
+                repeat(2) {
+                    if (pending.isEmpty()) return@repeat
+                    val failedNow = mutableListOf<Uri>()
+                    for ((index, uri) in pending.withIndex()) {
+                        progress.setMessage(getString(R.string.uploading, index + 1, pending.size))
+                        try {
+                            DriveRepo.upload(this@ImageListActivity, folderId, uri)
+                            ok++
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            failedNow.add(uri)
+                        }
                     }
+                    pending = failedNow
                 }
             } finally {
                 progress.dismiss()
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                if (wakeLock.isHeld) wakeLock.release()
+                if (wifiLock.isHeld) wifiLock.release()
             }
+
+            val failed = pending.size
             if (failed == 0) {
                 Ui.toast(this@ImageListActivity, getString(R.string.uploaded, ok))
-            } else if (ok == 0) {
+            } else {
                 Ui.toast(
                     this@ImageListActivity,
                     getString(R.string.upload_failed, "$failed of ${uris.size}")
                 )
-            } else {
-                Ui.toast(this@ImageListActivity, getString(R.string.uploaded, ok))
             }
             load()
         }
